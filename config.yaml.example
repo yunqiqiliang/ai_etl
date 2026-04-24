@@ -1,0 +1,61 @@
+# AI ETL 配置文件模板
+# 复制为 config.yaml 后按实际情况修改
+# 敏感信息（API Key、密码）放在 .env 文件中
+
+# ── Provider 配置（选择使用哪个 LLM 服务） ──────────────────
+# 可选值: dashscope, zhipuai
+provider: dashscope
+
+# ── DashScope (阿里云百炼) 服务配置 ─────────────────────────
+# API Key 在 .env 中配置: DASHSCOPE_API_KEY=sk-xxx
+# 支持的 Batch 模型: qwen3-max, qwen3.5-plus, qwen3.5-flash, deepseek-r1, deepseek-v3 等
+# 完整列表: https://help.aliyun.com/zh/model-studio/batch-inference
+dashscope:
+  region: beijing                # beijing | singapore
+  model: qwen3.5-flash           # 默认模型
+  system_prompt: "You are a helpful assistant."
+  endpoint: /v1/chat/completions # 文本生成; 向量模型用 /v1/embeddings
+  completion_window: "24h"       # 最长等待时间 (24h ~ 336h)
+  poll_interval: 300.0            # 轮询间隔（秒）
+
+# ── ZhipuAI (智谱) 服务配置 ─────────────────────────────────
+# API Key 在 .env 中配置: ZHIPUAI_API_KEY=xxx.xxx
+# 支持的 Batch 模型: glm-4-flash, glm-4-plus, glm-4-air-250414 等
+# 完整列表: https://docs.bigmodel.cn/cn/guide/tools/batch
+zhipuai:
+  model: glm-4-flash
+  system_prompt: "You are a helpful assistant."
+  endpoint: /v4/chat/completions
+  poll_interval: 300.0
+
+# ── 输出配置 ────────────────────────────────────────────────
+output:
+  dir: output                    # 输出目录
+  result_file: result.jsonl      # 成功结果文件名
+  error_file: error.jsonl        # 错误详情文件名
+
+# ── ClickZetta Lakehouse 连接配置 ───────────────────────────
+# username 和 password 在 .env 中配置: CLICKZETTA_USERNAME / CLICKZETTA_PASSWORD
+# 区域地址参考: https://www.yunqi.tech/documents
+clickzetta:
+  service: cn-shanghai-alicloud.api.clickzetta.com
+  instance: your_instance        # 实例 ID
+  workspace: your_workspace      # 工作空间
+  schema: public                 # 默认 Schema
+  vcluster: default_ap           # 虚拟集群
+  sdk_job_timeout: 300           # SDK 作业超时（秒）
+
+# ── ETL 流水线配置 ──────────────────────────────────────────
+etl:
+  source:
+    table: "schema.source_table" # 源表名 (schema.table)
+    key_columns: "id"            # 主键字段（逗号分隔支持复合主键）
+    text_column: "content"       # 用于推理的文本字段
+    filter: ""                   # WHERE 过滤条件（不含 WHERE 关键字，留空表示不过滤）
+    batch_size: 0                # 每批最大行数（0 = 不限制）
+
+  target:
+    table: "schema.target_table" # 目标表名 (schema.table)
+    result_column: "ai_result"   # 推理结果写入的列名
+    write_mode: "append"         # append = 追加 | overwrite = 覆盖
+    # 目标表会自动添加元数据列: model, provider, prompt_tokens, completion_tokens, total_tokens

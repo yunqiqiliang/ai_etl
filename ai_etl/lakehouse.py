@@ -191,8 +191,25 @@ class LakehouseClient:
         if not lines:
             raise LakehouseError("没有有效数据可构建 JSONL 文件（全部被跳过）")
 
+        # 文件级校验：超过 Batch API 限制时报错，提示用户通过 batch_size 分批
+        if len(lines) > 50_000:
+            raise LakehouseError(
+                f"请求数 {len(lines)} 超过 Batch API 单文件限制 (50,000)。"
+                f"请在 config.yaml 中设置 etl.source.batch_size <= 50000 分批处理。"
+            )
+
         output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-        logger.info("JSONL 文件已生成: %s (%d 条请求)", output_path, len(lines))
+
+        file_size = output_path.stat().st_size
+        max_size = 100 * 1024 * 1024  # 智谱限制 100 MB，取较严的
+        if file_size > max_size:
+            output_path.unlink()
+            raise LakehouseError(
+                f"JSONL 文件大小 {file_size / 1024 / 1024:.1f} MB 超过限制 (100 MB)。"
+                f"请在 config.yaml 中设置 etl.source.batch_size 减小每批数据量。"
+            )
+
+        logger.info("JSONL 文件已生成: %s (%d 条请求, %.1f MB)", output_path, len(lines), file_size / 1024 / 1024)
         return output_path
 
     # ── 写入目标表 ────────────────────────────────────────────

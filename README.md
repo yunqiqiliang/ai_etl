@@ -109,9 +109,12 @@ cp .env.example .env        # edit: API keys + Lakehouse password
 # 3. Configure ETL parameters
 cp config.yaml.example config.yaml   # edit: provider, source, target
 
-# 4. Run
-python -m ai_etl run                           # table mode (default)
-python -m ai_etl run --source-type volume      # volume mode
+# 4. Run (processes all enabled sources in config.yaml)
+python -m ai_etl run
+
+# Run single source only
+python -m ai_etl run --source-type table
+python -m ai_etl run --source-type volume
 ```
 
 ## Two Source Modes
@@ -157,12 +160,15 @@ Volume mode features:
 ## CLI
 
 ```bash
-# Table ETL
+# Run all enabled sources (parallel batch submission)
 python -m ai_etl run
-python -m ai_etl run --provider zhipuai --model glm-4-flash
 
-# Volume ETL
-python -m ai_etl run --source-type volume --volume-name "USER VOLUME" --file-types .jpg,.png
+# Run single source
+python -m ai_etl run --source-type table
+python -m ai_etl run --source-type volume
+
+# Override provider/model
+python -m ai_etl run --provider zhipuai --model glm-4-flash
 
 # Query batch status
 python -m ai_etl status <batch_id>
@@ -174,20 +180,16 @@ python -m ai_etl resume <batch_id>
 ## Python API
 
 ```python
-from ai_etl import AIETLPipeline
+from ai_etl.pipeline import AIETLPipeline
 
-# Table mode
+# Run all enabled sources (both table + volume if configured)
 pipeline = AIETLPipeline()
-stats = pipeline.run()  # reads source_type from config.yaml
+stats = pipeline.run()
 pipeline.close()
 
-# Volume mode (override config)
+# Run single source type
 pipeline = AIETLPipeline()
-stats = pipeline.run(
-    source_type="volume",
-    volume_name="USER VOLUME",
-    file_types=[".jpg", ".png"],
-)
+stats = pipeline.run(source_type="volume")
 pipeline.close()
 ```
 
@@ -203,7 +205,7 @@ Both modes auto-create target tables with these metadata columns:
 | `completion_tokens` | INT | Output tokens |
 | `total_tokens` | INT | Total tokens |
 | `batch_id` | STRING | Batch job ID |
-| `processed_at` | STRING | Processing time (UTC ISO) |
+| `processed_at` | STRING | Processing timestamp (Beijing time, +08:00) |
 | `status_code` | INT | HTTP status (200=success) |
 | `finish_reason` | STRING | Model stop reason |
 | `response_id` | STRING | Server request ID |
@@ -317,7 +319,7 @@ ai_etl/
 │   ├── lakehouse.py          # Lakehouse read/write + Volume ops
 │   ├── pipeline.py           # ETL orchestration (table + volume)
 │   └── providers/            # DashScope + ZhipuAI batch providers
-└── tests/                    # 45 unit tests
+└── tests/                    # 61 unit tests
 ```
 
 ## Robustness
@@ -337,3 +339,6 @@ ai_etl/
 | Pipeline interrupted | batch_id persisted, `resume` supported |
 | Presigned URL expiry < batch window | Warning logged |
 | Volume files already processed | Incremental filter (skip existing) |
+| No source enabled | Clear error with config path hint |
+| Dual source enabled | Parallel batch submission, unified polling |
+| Table name without schema prefix | Auto-qualify with clickzetta.schema |

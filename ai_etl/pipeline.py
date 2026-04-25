@@ -123,13 +123,11 @@ class AIETLPipeline:
         table_enabled = cfg.etl_table_enabled
         volume_enabled = cfg.etl_volume_enabled
 
-        # 如果都没启用，回退到旧的 source_type 字段
         if not table_enabled and not volume_enabled:
-            old_type = cfg.etl_source_type
-            if old_type == "volume":
-                volume_enabled = True
-            else:
-                table_enabled = True
+            raise RuntimeError(
+                "未启用任何数据源。请在 config.yaml 中设置 "
+                "etl.sources.table.enabled 或 etl.sources.volume.enabled 为 true。"
+            )
 
         all_stats: List[Dict[str, Any]] = []
 

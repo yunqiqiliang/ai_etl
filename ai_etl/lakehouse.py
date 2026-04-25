@@ -92,7 +92,7 @@ class LakehouseClient:
         batch_size = batch_size if batch_size is not None else cfg.etl_table_batch_size
 
         if not table:
-            raise LakehouseError("未指定源表名。请在 config.yaml 的 etl.source.table 中配置。")
+            raise LakehouseError("未指定源表名。请在 config.yaml 的 etl.sources.table.table 中配置。")
 
         key_cols = [c.strip() for c in key_columns.split(",")]
         select_cols = key_cols + [text_column]
@@ -337,7 +337,7 @@ class LakehouseClient:
         if len(lines) > 50_000:
             raise LakehouseError(
                 f"请求数 {len(lines)} 超过 Batch API 单文件限制 (50,000)。"
-                f"请设置 etl.source.batch_size <= 50000 分批处理。"
+                f"请设置 etl.sources.volume.batch_size <= 50000 分批处理。"
             )
 
         output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -347,7 +347,7 @@ class LakehouseClient:
             output_path.unlink()
             raise LakehouseError(
                 f"JSONL 文件大小 {file_size / 1024 / 1024:.1f} MB 超过限制 (100 MB)。"
-                f"请设置 etl.source.batch_size 减小每批数据量。"
+                f"请设置 etl.sources.volume.batch_size 减小每批数据量。"
             )
 
         logger.info("多模态 JSONL 已生成: %s (%d 条请求, %.1f MB)", output_path, len(lines), file_size / 1024 / 1024)
@@ -561,7 +561,7 @@ class LakehouseClient:
         if len(lines) > 50_000:
             raise LakehouseError(
                 f"请求数 {len(lines)} 超过 Batch API 单文件限制 (50,000)。"
-                f"请在 config.yaml 中设置 etl.source.batch_size <= 50000 分批处理。"
+                f"请在 config.yaml 中设置 etl.sources.table.batch_size <= 50000 分批处理。"
             )
 
         output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -572,7 +572,7 @@ class LakehouseClient:
             output_path.unlink()
             raise LakehouseError(
                 f"JSONL 文件大小 {file_size / 1024 / 1024:.1f} MB 超过限制 (100 MB)。"
-                f"请在 config.yaml 中设置 etl.source.batch_size 减小每批数据量。"
+                f"请在 config.yaml 中设置 etl.sources.table.batch_size 减小每批数据量。"
             )
 
         logger.info("JSONL 文件已生成: %s (%d 条请求, %.1f MB)", output_path, len(lines), file_size / 1024 / 1024)
@@ -616,7 +616,7 @@ class LakehouseClient:
         text_column = cfg.etl_table_text_column
 
         if not target_table:
-            raise LakehouseError("未指定目标表名。请在 config.yaml 的 etl.target.table 中配置。")
+            raise LakehouseError("未指定目标表名。请在 config.yaml 的 etl.sources.table.target_table 或 etl.target.table 中配置。")
         if not results:
             logger.warning("没有结果需要写入")
             return 0

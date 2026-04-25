@@ -466,60 +466,6 @@ class Config:
         """Volume 数据源的独立目标表（优先于全局 etl.target.table）。"""
         return self._get_nested("etl", "sources", "volume", "target_table", default="")
 
-    # ── Backward compat: old flat source properties ───────────
-    # These read from the new nested path but fall back to old flat path
-
-    @property
-    def etl_source_type(self) -> str:
-        """Deprecated: use etl_table_enabled / etl_volume_enabled instead."""
-        return self._get_nested("etl", "source", "source_type", default="table")
-
-    @property
-    def etl_source_table(self) -> str:
-        return self.etl_table_name or self._get_nested("etl", "source", "table", default="")
-
-    @property
-    def etl_source_key_columns(self) -> str:
-        return self.etl_table_key_columns
-
-    @property
-    def etl_source_text_column(self) -> str:
-        return self.etl_table_text_column
-
-    @property
-    def etl_source_filter(self) -> Optional[str]:
-        return self.etl_table_filter
-
-    @property
-    def etl_source_batch_size(self) -> int:
-        return self.etl_table_batch_size or int(self._get_nested("etl", "source", "batch_size", default=0))
-
-    @property
-    def etl_source_volume_name(self) -> str:
-        return self.etl_volume_name or self._get_nested("etl", "source", "volume_name", default="")
-
-    @property
-    def etl_source_file_types(self) -> list:
-        return self.etl_volume_file_types or []
-
-    @property
-    def etl_source_subdirectory(self) -> str:
-        return self.etl_volume_subdirectory
-
-    @property
-    def etl_source_url_expiration(self) -> int:
-        return self.etl_volume_url_expiration
-
-    @property
-    def etl_source_system_prompt(self) -> str:
-        return self._get_nested("etl", "sources", "volume", "system_prompt",
-                                default=self._get_nested("etl", "source", "system_prompt",
-                                                         default="You are a helpful assistant."))
-
-    @property
-    def etl_source_user_prompt(self) -> str:
-        return self.etl_volume_user_prompt
-
     # ── Model Resolution ──────────────────────────────────────
 
     @property
@@ -532,10 +478,9 @@ class Config:
         defaults = {"dashscope": "qwen-vl-plus", "zhipuai": "glm-4v-plus"}
         return defaults.get(p, "")
 
-    def resolve_model(self, source_type: Optional[str] = None) -> str:
+    def resolve_model(self, source_type: str = "table") -> str:
         """Select model based on source_type: text model for table, multimodal for volume."""
-        st = source_type or self.etl_source_type
-        if st == "volume":
+        if source_type == "volume":
             return self.multimodal_model
         return self.model_name
 

@@ -255,35 +255,6 @@ Docs: https://docs.bigmodel.cn/cn/guide/tools/batch
 
 **Limits**: ≤ 50,000 requests/file, ≤ 100 MB/file, custom_id ≥ 6 chars. Cost = 50% of realtime. `completion_window` deprecated (auto-scheduled, ~24h, 7-day timeout).
 
-## Lakehouse AI Integration Roadmap
-
-> Survey date: 2026-04-25. Source: [yunqi.tech product docs](https://yunqi.tech/llms-full.txt)
-
-This project currently uses external Batch APIs (DashScope / ZhipuAI) for inference. ClickZetta Lakehouse offers several built-in AI capabilities that can complement or replace external batch processing in certain scenarios:
-
-| Capability | What It Does | When to Use Instead of Batch API |
-|-----------|-------------|----------------------------------|
-| **AI Gateway** | Unified model routing, rate limiting, caching, cost attribution | Centralized model management across teams |
-| **AI_COMPLETE()** | Call LLM directly in SQL | Small-scale text/image analysis (< 1K rows) |
-| **AI_EMBEDDING()** | Generate vector embeddings in SQL | Building RAG indexes, semantic search |
-| **Vector Index (HNSW)** | Similarity search with L2/cosine distance | Post-ETL retrieval and recommendation |
-| **Dynamic Table** | Incremental refresh on upstream changes | Auto-aggregate ETL results |
-| **Table Stream** | CDC on source tables | Event-driven ETL triggers |
-| **External Function** | Custom UDF via cloud functions | Complex pre/post-processing |
-
-### Batch API vs SQL AI Function
-
-| Dimension | Batch API (this project) | SQL AI Function |
-|-----------|-------------------------|-----------------|
-| **Scale** | 10K–50K rows per job | Hundreds of rows |
-| **Latency** | Minutes to hours | Seconds |
-| **Cost** | 50% off standard pricing | Standard pricing |
-| **Modality** | Text + image + video + audio | Text + image |
-| **Infrastructure** | External API (DashScope/ZhipuAI) | Built-in Lakehouse SQL |
-| **Best for** | Large-scale offline processing | Interactive analysis, small batches |
-
-For details, see [AI Functions](https://www.yunqi.tech/documents/AI_function_in_SQL) and [Vector Search](https://www.yunqi.tech/documents/vector-search) in the Lakehouse docs.
-
 ## Project Structure
 
 ```

@@ -395,13 +395,21 @@ class AIETLPipeline:
                     if status == "completed":
                         self._collect_results(job)
                     elif status == "failed":
-                        logger.error("[%s] batch 任务失败: %s", job.source_type, info)
+                        logger.error(
+                            "[%s] batch 任务失败 (batch_id=%s)。"
+                            "可能原因: 模型名称错误、API 配额不足、JSONL 格式问题。"
+                            "用 'python -m ai_etl status %s' 查看详情。",
+                            job.source_type, batch_id, batch_id,
+                        )
                         job.stats = self._make_stats(
                             job.source_rows, job.provider_name, job.model,
                             batch_id=batch_id, batch_status="failed",
                         )
                     else:
-                        logger.error("[%s] batch 任务终止: %s", job.source_type, status)
+                        logger.error(
+                            "[%s] batch 任务终止 (status=%s, batch_id=%s)。",
+                            job.source_type, status, batch_id,
+                        )
                         job.stats = self._make_stats(
                             job.source_rows, job.provider_name, job.model,
                             batch_id=batch_id, batch_status=status,

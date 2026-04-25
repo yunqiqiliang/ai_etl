@@ -104,7 +104,21 @@ class LakehouseClient:
             sql += f" LIMIT {batch_size}"
 
         logger.info("读取源表: %s", sql)
-        rows = self.session.sql(sql).collect()
+        try:
+            rows = self.session.sql(sql).collect()
+        except Exception as e:
+            err = str(e)
+            if "not found" in err.lower() or "does not exist" in err.lower():
+                raise LakehouseError(
+                    f"源表 {table} 不存在。请检查 config.yaml 中 etl.sources.table.table 的值，"
+                    f"确认表名和 schema 拼写正确。"
+                ) from e
+            if "column" in err.lower() and "not found" in err.lower():
+                raise LakehouseError(
+                    f"源表 {table} 中找不到指定的列。请检查 key_columns ({key_columns}) "
+                    f"和 text_column ({text_column}) 是否与源表字段名一致。"
+                ) from e
+            raise LakehouseError(f"读取源表失败: {e}") from e
 
         result = []
         for row in rows:
@@ -382,7 +396,9 @@ class LakehouseClient:
         write_mode = write_mode or cfg.etl_target_write_mode
 
         if not target_table:
-            raise LakehouseError("未指定目标表名。")
+            raise LakehouseError(
+                "未指定 Volume 目标表名。请在 config.yaml 的 etl.sources.volume.target_table 中配置。"
+            )
         if not results:
             logger.warning("没有结果需要写入")
             return 0
@@ -466,7 +482,7 @@ class LakehouseClient:
             self.session.table(target_table).schema
             return
         except Exception:
-            pass
+            logger.debug("Volume 目标表 %s 不存在，将自动创建", target_table)
 
         col_defs = [
             "file_path STRING",
@@ -744,7 +760,7 @@ class LakehouseClient:
             self.session.table(target_table).schema
             return  # 表已存在
         except Exception:
-            pass
+            logger.debug("目标表 %s 不存在，将自动创建", target_table)
 
         # 读取源表 schema 推断主键列类型
         source_table = self._config.etl_table_name
@@ -767,7 +783,7 @@ class LakehouseClient:
                     else:
                         source_type_map[name] = "STRING"
             except Exception:
-                pass
+                logger.debug("无法读取源表 %s 的 schema，主键列将使用 STRING 类型", source_table)
 
         # 构建 CREATE TABLE
         col_defs = []

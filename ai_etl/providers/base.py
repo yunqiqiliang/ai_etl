@@ -153,12 +153,20 @@ class BatchProvider(ABC):
                 if status == "completed":
                     return status
                 if status == "failed":
-                    raise RuntimeError(f"[{self.name}] 批量任务失败: {info}")
+                    raise RuntimeError(
+                        f"[{self.name}] 批量任务失败 (batch_id={batch_id})。"
+                        f"可能原因: 模型不支持 batch、API Key 无权限、请求格式错误。"
+                        f"详情: {info}"
+                    )
                 if status == "expired":
                     raise RuntimeError(
-                        f"[{self.name}] 批量任务已过期。建议增大 completion_window 后重试。"
+                        f"[{self.name}] 批量任务已过期 (batch_id={batch_id})。"
+                        f"任务未在 completion_window 内完成。"
+                        f"建议: 减小 batch_size 或增大 completion_window 后重试。"
                     )
-                raise RuntimeError(f"[{self.name}] 批量任务终止, 状态: {status}")
+                raise RuntimeError(
+                    f"[{self.name}] 批量任务终止 (batch_id={batch_id}, status={status})。"
+                )
 
             if timeout is not None and elapsed > timeout:
                 raise TimeoutError(

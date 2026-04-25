@@ -244,9 +244,13 @@ class AIETLPipeline:
             model=resolved_model, system_prompt=resolved_prompt, endpoint=endpoint,
         )
         file_id = provider.upload_file(jsonl_path)
+        if not file_id:
+            raise RuntimeError("[Table] 文件上传失败，未获得 file_id。请检查 API Key 和网络连接。")
         batch_id = provider.create_batch(
             file_id, task_name=f"ai-etl-{source_table or cfg.etl_table_name}",
         )
+        if not batch_id:
+            raise RuntimeError("[Table] 创建 batch 失败，未获得 batch_id。请检查模型名称和 API 配额。")
         if jsonl_path.exists():
             jsonl_path.unlink()
 
@@ -327,9 +331,13 @@ class AIETLPipeline:
             provider_name=provider.name, endpoint=endpoint,
         )
         file_id = provider.upload_file(jsonl_path)
+        if not file_id:
+            raise RuntimeError("[Volume] 文件上传失败，未获得 file_id。请检查 API Key 和网络连接。")
         batch_id = provider.create_batch(
             file_id, task_name=f"ai-etl-volume-{volume_display}",
         )
+        if not batch_id:
+            raise RuntimeError("[Volume] 创建 batch 失败，未获得 batch_id。请检查模型名称和 API 配额。")
         if jsonl_path.exists():
             jsonl_path.unlink()
 
@@ -445,9 +453,21 @@ class AIETLPipeline:
         error_count = len(errors)
         logger.info("[%s] 推理完成: %d 成功, %d 失败", job.source_type, success_count, error_count)
 
+        if error_count > 0:
+            logger.warning(
+                "[%s] %d 条请求推理失败，详见 output/error_%s.jsonl",
+                job.source_type, error_count, job.source_type,
+            )
+
         # 写入目标表
         written = 0
-        if results:
+        if not results:
+            logger.warning(
+                "[%s] batch 已完成但没有成功的推理结果。"
+                "所有 %d 条请求均失败，请检查 error 文件。",
+                job.source_type, error_count,
+            )
+        else:
             if job.source_type == "volume":
                 file_metadata = {f["relative_path"]: f for f in job.files_with_urls}
                 written = self._lakehouse.write_volume_results(

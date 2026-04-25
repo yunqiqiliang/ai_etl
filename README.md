@@ -107,28 +107,99 @@ Supports multiple providers (DashScope / ZhipuAI) and multiple modalities (text,
 
 ## Quick Start
 
+### Step 1: Install
+
 ```bash
-# 1. Install
-cd ai_etl && pip install -e .
-# For ZhipuAI support: pip install -e ".[zhipuai]"
-
-# 2. Configure credentials
-cp .env.example .env        # edit: API keys + Lakehouse password
-
-# 3. Configure ETL parameters
-cp config.yaml.example config.yaml   # edit: provider, source, target
-
-# 4. Run (processes all enabled sources in config.yaml)
-python -m ai_etl run
-
-# Run single source only
-python -m ai_etl run --source-type table
-python -m ai_etl run --source-type volume
+git clone https://github.com/yunqiqiliang/ai_etl.git
+cd ai_etl
+pip install -e .
+# For ZhipuAI provider: pip install -e ".[zhipuai]"
 ```
 
-> **Note**: Batch inference runs server-side and typically takes **10–60 minutes** to complete.
-> The pipeline polls for status every `poll_interval` seconds (default 300s, set lower for testing).
-> You can safely Ctrl+C and later resume with `python -m ai_etl resume <batch_id>`.
+### Step 2: Configure credentials (.env)
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` with your actual credentials:
+
+```dotenv
+# At least one LLM provider API key is required
+DASHSCOPE_API_KEY=sk-xxxxxxxxxxxxxxxxxxxx
+ZHIPUAI_API_KEY=xxxxxxxxxxxxxxxxxxxx          # optional
+
+# ClickZetta Lakehouse credentials
+CLICKZETTA_USERNAME=your_username
+CLICKZETTA_PASSWORD=your_password
+```
+
+### Step 3: Configure ETL parameters (config.yaml)
+
+```bash
+cp config.yaml.example config.yaml
+```
+
+Edit `config.yaml`. Here is a minimal working example for **table mode** (structured text):
+
+```yaml
+provider: dashscope
+
+dashscope:
+  model: qwen3.5-flash
+  endpoint: /v1/chat/completions
+  completion_window: "24h"
+  poll_interval: 30.0                  # seconds between status checks (use 300 for production)
+
+clickzetta:
+  service: cn-shanghai-alicloud.api.clickzetta.com
+  instance: your_instance_id           # from Lakehouse console
+  workspace: your_workspace            # from Lakehouse console
+  schema: your_schema
+  vcluster: default_ap
+
+etl:
+  sources:
+    table:
+      enabled: true
+      table: "your_schema.your_table"  # source table with text data
+      key_columns: "id"                # primary key column(s), comma-separated
+      text_column: "content"           # column containing text to analyze
+      filter: ""                       # optional WHERE clause
+      batch_size: 100                  # rows per batch (0 = all rows)
+      system_prompt: "You are a helpful assistant."
+      target_table: "your_schema.your_results"  # auto-created if not exists
+    volume:
+      enabled: false
+  target:
+    result_column: "ai_result"
+    write_mode: "append"
+```
+
+### Step 4: Run
+
+```bash
+python -m ai_etl run
+```
+
+Expected output:
+
+```
+[Table] 读取到 100 行
+[Table] 构建 JSONL 并提交...
+[Table] batch 已提交: batch_xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+等待 1 个 batch 任务完成 (轮询间隔 30s)...
+[table] batch_xxxxxxxx-xxxx: in_progress (0/100 done, 0%) [0s]
+...
+[table] batch_xxxxxxxx-xxxx: completed (100/100 done, 100%) [15min]
+[table] 推理完成: 100 成功, 0 失败
+[table] 写入 100 行到 your_schema.your_results
+
+完成: 100 成功, 100 行写入
+```
+
+> **Batch inference runs server-side and typically takes 10–60 minutes.**
+> You can safely Ctrl+C and later resume: `python -m ai_etl resume <batch_id>`
 
 ## Two Source Modes
 

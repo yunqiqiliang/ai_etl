@@ -5,278 +5,335 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>云器Lakehouse × LLM 批量推理 — 多模态 AI ETL 解决方案</title>
 <style>
-  :root {
-    --primary: #1a56db;
-    --primary-light: #e8f0fe;
-    --accent: #f59e0b;
-    --text: #1f2937;
-    --text-light: #6b7280;
-    --bg: #ffffff;
-    --bg-alt: #f9fafb;
-    --border: #e5e7eb;
-    --success: #10b981;
-    --radius: 8px;
-  }
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans SC", sans-serif; color: var(--text); line-height: 1.7; background: var(--bg); }
-  .container { max-width: 960px; margin: 0 auto; padding: 0 24px; }
+:root {
+  --primary: #1a56db;
+  --primary-dark: #1e3a5f;
+  --primary-light: #e8f0fe;
+  --accent: #f59e0b;
+  --accent-light: #fef3c7;
+  --text: #1f2937;
+  --text-secondary: #4b5563;
+  --text-muted: #9ca3af;
+  --bg: #ffffff;
+  --bg-alt: #f8fafc;
+  --bg-dark: #0f172a;
+  --border: #e2e8f0;
+  --success: #059669;
+  --success-light: #d1fae5;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+  --shadow: 0 4px 12px rgba(0,0,0,0.08);
+  --shadow-lg: 0 8px 24px rgba(0,0,0,0.12);
+  --radius: 10px;
+  --radius-lg: 16px;
+}
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  color: var(--text); line-height: 1.75; background: var(--bg);
+}
+.container { max-width: 1040px; margin: 0 auto; padding: 0 32px; }
 
-  /* Header */
-  header { background: linear-gradient(135deg, #1e3a5f 0%, #1a56db 100%); color: #fff; padding: 48px 0 40px; }
-  header .badge { display: inline-block; background: rgba(255,255,255,0.15); border-radius: 20px; padding: 4px 14px; font-size: 13px; margin-bottom: 16px; }
-  header h1 { font-size: 32px; font-weight: 700; margin-bottom: 12px; }
-  header p { font-size: 17px; opacity: 0.9; max-width: 680px; }
+/* ── Header ── */
+header {
+  background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary) 60%, #3b82f6 100%);
+  color: #fff; padding: 64px 0 56px; position: relative; overflow: hidden;
+}
+header::after {
+  content: ""; position: absolute; bottom: -2px; left: 0; right: 0; height: 48px;
+  background: var(--bg); clip-path: ellipse(55% 100% at 50% 100%);
+}
+header .badge {
+  display: inline-block; background: rgba(255,255,255,0.12); backdrop-filter: blur(4px);
+  border: 1px solid rgba(255,255,255,0.2); border-radius: 24px;
+  padding: 6px 18px; font-size: 13px; font-weight: 500; letter-spacing: 0.5px; margin-bottom: 20px;
+}
+header h1 { font-size: 36px; font-weight: 800; line-height: 1.3; margin-bottom: 16px; }
+header .subtitle { font-size: 17px; opacity: 0.88; max-width: 700px; line-height: 1.7; }
 
-  /* Sections */
-  section { padding: 48px 0; }
-  section:nth-child(even) { background: var(--bg-alt); }
-  h2 { font-size: 24px; font-weight: 700; margin-bottom: 20px; color: var(--primary); }
-  h3 { font-size: 18px; font-weight: 600; margin: 24px 0 12px; }
-  p, li { font-size: 15px; }
-  p + p { margin-top: 12px; }
-  ul, ol { padding-left: 20px; margin: 12px 0; }
-  li { margin-bottom: 6px; }
+/* ── Sections ── */
+section { padding: 64px 0; }
+section.alt { background: var(--bg-alt); }
+h2 {
+  font-size: 26px; font-weight: 700; margin-bottom: 8px; color: var(--text);
+  display: flex; align-items: center; gap: 12px;
+}
+h2 .section-icon { font-size: 28px; }
+.section-desc { font-size: 15px; color: var(--text-secondary); margin-bottom: 28px; max-width: 720px; }
+h3 { font-size: 17px; font-weight: 600; margin: 32px 0 12px; color: var(--text); }
 
-  /* Cards */
-  .card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin: 20px 0; }
-  .card { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; }
-  .card h4 { font-size: 16px; font-weight: 600; margin-bottom: 8px; }
-  .card p { font-size: 14px; color: var(--text-light); }
-  .card .icon { font-size: 28px; margin-bottom: 12px; }
+/* ── Cards ── */
+.card-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin: 24px 0; }
+@media (max-width: 640px) { .card-grid { grid-template-columns: 1fr; } }
+.card {
+  background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 28px; box-shadow: var(--shadow-sm); transition: box-shadow 0.2s, transform 0.2s;
+}
+.card:hover { box-shadow: var(--shadow); transform: translateY(-2px); }
+.card .icon { width: 44px; height: 44px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 22px; margin-bottom: 16px; }
+.card .icon.blue { background: var(--primary-light); }
+.card .icon.amber { background: var(--accent-light); }
+.card .icon.green { background: var(--success-light); }
+.card .icon.gray { background: #f1f5f9; }
+.card h4 { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+.card p { font-size: 14px; color: var(--text-secondary); line-height: 1.65; }
 
-  /* Table */
-  table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px; }
-  th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border); }
-  th { background: var(--bg-alt); font-weight: 600; white-space: nowrap; }
-  tr:hover td { background: var(--primary-light); }
+/* ── Tables ── */
+.table-wrap { overflow-x: auto; margin: 16px 0; border-radius: var(--radius); border: 1px solid var(--border); }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th { background: var(--bg-alt); font-weight: 600; padding: 12px 16px; text-align: left; border-bottom: 2px solid var(--border); white-space: nowrap; }
+td { padding: 11px 16px; border-bottom: 1px solid #f1f5f9; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f8fafc; }
+td strong { color: var(--primary); }
 
-  /* Highlight box */
-  .highlight { background: var(--primary-light); border-left: 4px solid var(--primary); border-radius: 0 var(--radius) var(--radius) 0; padding: 16px 20px; margin: 20px 0; }
-  .highlight.success { background: #ecfdf5; border-left-color: var(--success); }
-  .highlight strong { color: var(--primary); }
-  .highlight.success strong { color: var(--success); }
+/* ── Highlight ── */
+.callout {
+  border-radius: var(--radius); padding: 20px 24px; margin: 24px 0;
+  display: flex; gap: 14px; align-items: flex-start;
+}
+.callout.info { background: var(--primary-light); border: 1px solid #bfdbfe; }
+.callout.success { background: var(--success-light); border: 1px solid #a7f3d0; }
+.callout .callout-icon { font-size: 22px; flex-shrink: 0; margin-top: 1px; }
+.callout .callout-body { font-size: 14px; line-height: 1.7; }
+.callout .callout-body strong { color: var(--text); }
 
-  /* SVG diagram */
-  .diagram { margin: 24px 0; text-align: center; overflow-x: auto; }
-  .diagram svg { max-width: 100%; height: auto; }
+/* ── Diagram ── */
+.diagram { margin: 32px 0; text-align: center; overflow-x: auto; }
+.diagram svg { max-width: 100%; height: auto; filter: drop-shadow(0 2px 8px rgba(0,0,0,0.06)); }
 
-  /* Steps */
-  .steps { counter-reset: step; }
-  .step { display: flex; gap: 16px; margin-bottom: 24px; }
-  .step::before { counter-increment: step; content: counter(step); flex-shrink: 0; width: 32px; height: 32px; background: var(--primary); color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; margin-top: 2px; }
-  .step-content h4 { font-size: 16px; margin-bottom: 4px; }
-  .step-content p { font-size: 14px; color: var(--text-light); }
+/* ── Steps ── */
+.steps { counter-reset: step; margin: 28px 0; }
+.step-item {
+  display: flex; gap: 20px; margin-bottom: 28px; padding: 24px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+}
+.step-num {
+  flex-shrink: 0; width: 36px; height: 36px; background: var(--primary); color: #fff;
+  border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 15px; counter-increment: step; margin-top: 2px;
+}
+.step-num::after { content: counter(step); }
+.step-body h4 { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+.step-body p { font-size: 14px; color: var(--text-secondary); }
 
-  /* Code */
-  code { background: #f3f4f6; padding: 2px 6px; border-radius: 4px; font-size: 13px; font-family: "SF Mono", "Fira Code", monospace; }
-  pre { background: #1e293b; color: #e2e8f0; padding: 16px 20px; border-radius: var(--radius); overflow-x: auto; margin: 12px 0; font-size: 13px; line-height: 1.6; }
+/* ── Code ── */
+code {
+  background: #f1f5f9; padding: 2px 7px; border-radius: 5px; font-size: 13px;
+  font-family: "SF Mono", "Fira Code", "JetBrains Mono", monospace; color: #334155;
+}
+pre {
+  background: var(--bg-dark); color: #e2e8f0; padding: 18px 22px;
+  border-radius: var(--radius); overflow-x: auto; margin: 12px 0;
+  font-size: 13px; line-height: 1.65; border: 1px solid #1e293b;
+}
 
-  /* Footer */
-  footer { background: #1e293b; color: #94a3b8; padding: 32px 0; font-size: 13px; text-align: center; }
-  footer a { color: #60a5fa; text-decoration: none; }
-  footer a:hover { text-decoration: underline; }
+/* ── Verified badge ── */
+.verified {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--success-light); color: #065f46;
+  border: 1px solid #a7f3d0; border-radius: 20px;
+  padding: 4px 14px; font-size: 13px; font-weight: 600;
+}
+.verified::before {
+  content: "✓"; background: var(--success); color: #fff;
+  width: 18px; height: 18px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center; font-size: 11px;
+}
 
-  /* Verified badge */
-  .verified { display: inline-flex; align-items: center; gap: 6px; background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; border-radius: 20px; padding: 4px 12px; font-size: 13px; font-weight: 600; }
-  .verified::before { content: "✓"; background: var(--success); color: #fff; width: 18px; height: 18px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; }
+/* ── Check list ── */
+.check-list { list-style: none; padding: 0; margin: 16px 0; }
+.check-list li { padding: 6px 0 6px 28px; position: relative; font-size: 14px; }
+.check-list li::before { content: "✅"; position: absolute; left: 0; top: 6px; font-size: 14px; }
+
+/* ── Footer ── */
+footer {
+  background: var(--bg-dark); color: #94a3b8; padding: 40px 0; text-align: center;
+}
+footer a { color: #60a5fa; text-decoration: none; font-weight: 500; }
+footer a:hover { text-decoration: underline; }
+footer .footer-title { color: #e2e8f0; font-size: 16px; font-weight: 600; margin-bottom: 12px; }
+footer .footer-links { margin-bottom: 16px; font-size: 14px; }
+footer .footer-note { font-size: 12px; color: #64748b; max-width: 600px; margin: 0 auto; }
 </style>
 </head>
 <body>
 
-<!-- ============ Header ============ -->
 <header>
   <div class="container">
-    <span class="badge">云器 Lakehouse 解决方案</span>
-    <h1>多模态 AI ETL：大规模 LLM 批量推理</h1>
-    <p>基于云器 Lakehouse 的结构化表和非结构化 Volume，通过 LLM Batch API 实现 50% 成本的大规模 AI 数据转换，结果自动写回 Lakehouse 并附带完整元数据。</p>
+    <span class="badge">☁️ 云器 Lakehouse 解决方案</span>
+    <h1>多模态 AI ETL<br>大规模 LLM 批量推理</h1>
+    <p class="subtitle">基于云器 Lakehouse 的结构化表和非结构化 Volume，通过 LLM Batch API 实现 50% 成本的大规模 AI 数据转换，结果自动写回 Lakehouse 并附带完整元数据审计。</p>
   </div>
 </header>
 
-<!-- ============ 业务挑战 ============ -->
-<section>
+<!-- ══════ 业务挑战 ══════ -->
+<section class="alt">
   <div class="container">
-    <h2>业务挑战</h2>
-    <p>企业在将 AI 能力融入数据处理流程时，面临以下核心问题：</p>
+    <h2><span class="section-icon">🎯</span> 业务挑战</h2>
+    <p class="section-desc">企业在将 AI 能力融入数据处理流程时，面临以下核心问题：</p>
     <div class="card-grid">
       <div class="card">
-        <div class="icon">💰</div>
+        <div class="icon amber">💰</div>
         <h4>成本高昂</h4>
-        <p>实时 API 按标准价格计费，处理数万条数据的推理费用难以控制。</p>
+        <p>实时 API 按标准价格计费，处理数万条数据的推理费用难以控制，无法规模化。</p>
       </div>
       <div class="card">
-        <div class="icon">⚡</div>
+        <div class="icon blue">⚡</div>
         <h4>并发受限</h4>
         <p>实时 API 有 QPM/TPM 限制，自行管理并发、限流和重试逻辑复杂且易出错。</p>
       </div>
       <div class="card">
-        <div class="icon">🔗</div>
+        <div class="icon gray">🔗</div>
         <h4>数据断裂</h4>
-        <p>推理结果散落在本地文件或临时存储中，无法与源数据关联，缺少审计元数据。</p>
+        <p>推理结果散落在本地文件中，无法与源数据关联，缺少模型、token、时间等审计元数据。</p>
       </div>
       <div class="card">
-        <div class="icon">🖼️</div>
+        <div class="icon green">🖼️</div>
         <h4>多模态困难</h4>
-        <p>图片、视频、音频等非结构化文件需要额外的存储管理和 URL 生成，流程碎片化。</p>
+        <p>图片、视频、音频需要额外的存储管理和 URL 生成，文本与多模态流程无法统一。</p>
       </div>
     </div>
   </div>
 </section>
 
-<!-- ============ 解决方案概述 ============ -->
+<!-- ══════ 解决方案概述 ══════ -->
 <section>
   <div class="container">
-    <h2>解决方案概述</h2>
-    <p>本方案将<strong>云器 Lakehouse</strong> 的湖仓一体能力与 <strong>LLM Batch API</strong>（DashScope / ZhipuAI）结合，构建端到端的多模态 AI ETL 流水线：</p>
+    <h2><span class="section-icon">💡</span> 解决方案概述</h2>
+    <p class="section-desc">将云器 Lakehouse 的湖仓一体能力与 LLM Batch API 结合，构建端到端的多模态 AI ETL 流水线。</p>
 
-    <div class="highlight">
-      <strong>核心思路：</strong>从 Lakehouse 读取数据 → 构建 JSONL → 提交 Batch 推理（50% 成本）→ 结果 + 元数据写回 Lakehouse。双数据源并行提交，统一轮询等待。
+    <div class="callout info">
+      <span class="callout-icon">🔑</span>
+      <div class="callout-body">
+        <strong>核心思路：</strong>从 Lakehouse 读取数据 → 构建 JSONL → 提交 Batch 推理（50% 成本）→ 结果 + 元数据写回 Lakehouse。<br>双数据源（Table + Volume）并行提交，统一轮询等待，先完成的先写入。
+      </div>
     </div>
 
-    <!-- Architecture SVG -->
     <div class="diagram">
-      <svg viewBox="0 0 900 620" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system, sans-serif">
+      <svg viewBox="0 0 900 620" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system, 'PingFang SC', sans-serif">
         <defs>
-          <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-auto">
-            <path d="M 0 0 L 10 5 L 0 10 z" fill="#6b7280"/>
-          </marker>
-          <linearGradient id="headerGrad" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0%" stop-color="#1e3a5f"/>
-            <stop offset="100%" stop-color="#1a56db"/>
-          </linearGradient>
+          <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#94a3b8"/></marker>
+          <linearGradient id="hg" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#1e3a5f"/><stop offset="100%" stop-color="#1a56db"/></linearGradient>
+          <filter id="ds"><feDropShadow dx="0" dy="1" stdDeviation="2" flood-opacity="0.08"/></filter>
         </defs>
+        <rect width="900" height="620" rx="14" fill="#f8fafc" stroke="#e2e8f0"/>
+        <rect x="0" y="0" width="900" height="44" rx="14" fill="url(#hg)"/><rect x="0" y="20" width="900" height="24" fill="url(#hg)"/>
+        <text x="450" y="29" text-anchor="middle" fill="#fff" font-size="14" font-weight="700" letter-spacing="0.5">Multimodal AI ETL Pipeline</text>
 
-        <!-- Background -->
-        <rect width="900" height="620" rx="12" fill="#f9fafb" stroke="#e5e7eb"/>
+        <!-- EXTRACT -->
+        <text x="30" y="74" fill="#1a56db" font-size="12" font-weight="700" letter-spacing="1">EXTRACT</text>
+        <rect x="30" y="86" width="400" height="108" rx="8" fill="#fff" stroke="#1a56db" stroke-width="1.2" filter="url(#ds)"/>
+        <text x="50" y="108" fill="#1a56db" font-size="13" font-weight="600">Source A: Table</text>
+        <text x="50" y="128" fill="#64748b" font-size="11.5">SELECT key, text FROM source_table</text>
+        <text x="50" y="146" fill="#64748b" font-size="11.5">WHERE filter  LIMIT batch_size</text>
+        <text x="50" y="172" fill="#94a3b8" font-size="10.5">→ ZettaPark session.sql()</text>
 
-        <!-- Title -->
-        <rect x="0" y="0" width="900" height="44" rx="12" fill="url(#headerGrad)"/>
-        <rect x="0" y="20" width="900" height="24" fill="url(#headerGrad)"/>
-        <text x="450" y="28" text-anchor="middle" fill="#fff" font-size="15" font-weight="700">Multimodal AI ETL Pipeline</text>
+        <rect x="470" y="86" width="400" height="108" rx="8" fill="#fff" stroke="#1a56db" stroke-width="1.2" filter="url(#ds)"/>
+        <text x="490" y="108" fill="#1a56db" font-size="13" font-weight="600">Source B: Volume</text>
+        <text x="490" y="128" fill="#64748b" font-size="11.5">DIRECTORY(VOLUME) → file discovery</text>
+        <text x="490" y="146" fill="#64748b" font-size="11.5">GET_PRESIGNED_URL() → HTTP URLs</text>
+        <text x="490" y="172" fill="#94a3b8" font-size="10.5">→ incremental filter (skip processed)</text>
 
-        <!-- EXTRACT label -->
-        <text x="30" y="76" fill="#1a56db" font-size="13" font-weight="700">EXTRACT</text>
+        <line x1="230" y1="194" x2="230" y2="224" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#arr)"/>
+        <line x1="670" y1="194" x2="670" y2="224" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#arr)"/>
 
-        <!-- Source A: Table -->
-        <rect x="30" y="88" width="390" height="110" rx="8" fill="#fff" stroke="#1a56db" stroke-width="1.5"/>
-        <text x="50" y="110" fill="#1a56db" font-size="13" font-weight="600">Source A: Table</text>
-        <text x="50" y="132" fill="#6b7280" font-size="12">SELECT key, text FROM source_table</text>
-        <text x="50" y="150" fill="#6b7280" font-size="12">WHERE filter  LIMIT batch_size</text>
-        <text x="50" y="174" fill="#9ca3af" font-size="11">→ ZettaPark session.sql()</text>
+        <!-- TRANSFORM -->
+        <text x="30" y="244" fill="#92400e" font-size="12" font-weight="700" letter-spacing="1">TRANSFORM</text>
+        <rect x="30" y="254" width="400" height="64" rx="8" fill="#fff" stroke="#f59e0b" stroke-width="1.2" filter="url(#ds)"/>
+        <text x="50" y="278" fill="#92400e" font-size="13" font-weight="600">Build Text JSONL</text>
+        <text x="50" y="298" fill="#64748b" font-size="11">custom_id: encode(key) | messages: [system, user:text]</text>
 
-        <!-- Source B: Volume -->
-        <rect x="480" y="88" width="390" height="110" rx="8" fill="#fff" stroke="#1a56db" stroke-width="1.5"/>
-        <text x="500" y="110" fill="#1a56db" font-size="13" font-weight="600">Source B: Volume</text>
-        <text x="500" y="132" fill="#6b7280" font-size="12">DIRECTORY(VOLUME) → file discovery</text>
-        <text x="500" y="150" fill="#6b7280" font-size="12">GET_PRESIGNED_URL() → HTTP URLs</text>
-        <text x="500" y="174" fill="#9ca3af" font-size="11">→ incremental filter (skip processed)</text>
+        <rect x="470" y="254" width="400" height="64" rx="8" fill="#fff" stroke="#f59e0b" stroke-width="1.2" filter="url(#ds)"/>
+        <text x="490" y="278" fill="#92400e" font-size="13" font-weight="600">Build Multimodal JSONL</text>
+        <text x="490" y="298" fill="#64748b" font-size="11">custom_id: encode(path) | messages: [image/video/audio, text]</text>
 
-        <!-- Arrows down from sources -->
-        <line x1="225" y1="198" x2="225" y2="228" stroke="#6b7280" stroke-width="1.5" marker-end="url(#arrow)"/>
-        <line x1="675" y1="198" x2="675" y2="228" stroke="#6b7280" stroke-width="1.5" marker-end="url(#arrow)"/>
+        <line x1="230" y1="318" x2="230" y2="340" stroke="#94a3b8" stroke-width="1.2"/>
+        <line x1="670" y1="318" x2="670" y2="340" stroke="#94a3b8" stroke-width="1.2"/>
+        <line x1="230" y1="340" x2="670" y2="340" stroke="#94a3b8" stroke-width="1.2"/>
+        <line x1="450" y1="340" x2="450" y2="362" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#arr)"/>
 
-        <!-- TRANSFORM label -->
-        <text x="30" y="248" fill="#1a56db" font-size="13" font-weight="700">TRANSFORM</text>
+        <!-- INFERENCE -->
+        <rect x="140" y="366" width="620" height="76" rx="8" fill="#fff" stroke="#059669" stroke-width="1.2" filter="url(#ds)"/>
+        <text x="450" y="392" text-anchor="middle" fill="#065f46" font-size="14" font-weight="700">LLM Batch Inference (server-side)</text>
+        <text x="450" y="412" text-anchor="middle" fill="#64748b" font-size="11.5">DashScope / ZhipuAI  ·  50% cost  ·  up to 50K req/file  ·  auto retry</text>
+        <text x="450" y="430" text-anchor="middle" fill="#94a3b8" font-size="10.5">parallel submit → unified polling → first-done-first-write</text>
 
-        <!-- Build Text JSONL -->
-        <rect x="30" y="256" width="390" height="70" rx="8" fill="#fff" stroke="#f59e0b" stroke-width="1.5"/>
-        <text x="50" y="280" fill="#92400e" font-size="13" font-weight="600">Build Text JSONL</text>
-        <text x="50" y="300" fill="#6b7280" font-size="12">custom_id: encode(key) | messages: [system, user:text]</text>
+        <line x1="450" y1="442" x2="450" y2="470" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#arr)"/>
 
-        <!-- Build Multimodal JSONL -->
-        <rect x="480" y="256" width="390" height="70" rx="8" fill="#fff" stroke="#f59e0b" stroke-width="1.5"/>
-        <text x="500" y="280" fill="#92400e" font-size="13" font-weight="600">Build Multimodal JSONL</text>
-        <text x="500" y="300" fill="#6b7280" font-size="12">custom_id: encode(path) | messages: [image/video/audio]</text>
+        <!-- LOAD -->
+        <text x="30" y="490" fill="#1a56db" font-size="12" font-weight="700" letter-spacing="1">LOAD</text>
+        <line x1="450" y1="474" x2="230" y2="474" stroke="#94a3b8" stroke-width="1.2"/>
+        <line x1="450" y1="474" x2="670" y2="474" stroke="#94a3b8" stroke-width="1.2"/>
+        <line x1="230" y1="474" x2="230" y2="496" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#arr)"/>
+        <line x1="670" y1="474" x2="670" y2="496" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#arr)"/>
 
-        <!-- Arrows merge -->
-        <line x1="225" y1="326" x2="225" y2="348" stroke="#6b7280" stroke-width="1.5"/>
-        <line x1="675" y1="326" x2="675" y2="348" stroke="#6b7280" stroke-width="1.5"/>
-        <line x1="225" y1="348" x2="675" y2="348" stroke="#6b7280" stroke-width="1.5"/>
-        <line x1="450" y1="348" x2="450" y2="368" stroke="#6b7280" stroke-width="1.5" marker-end="url(#arrow)"/>
+        <rect x="30" y="500" width="400" height="76" rx="8" fill="#fff" stroke="#1a56db" stroke-width="1.2" filter="url(#ds)"/>
+        <text x="50" y="524" fill="#1a56db" font-size="13" font-weight="600">Table Target</text>
+        <text x="50" y="544" fill="#64748b" font-size="11.5">key_columns + ai_result + 12 metadata columns</text>
+        <text x="50" y="562" fill="#94a3b8" font-size="10.5">→ auto-create table · type-aware casting</text>
 
-        <!-- Batch Inference -->
-        <rect x="150" y="372" width="600" height="80" rx="8" fill="#fff" stroke="#10b981" stroke-width="1.5"/>
-        <text x="450" y="396" text-anchor="middle" fill="#065f46" font-size="14" font-weight="700">LLM Batch Inference (server-side)</text>
-        <text x="450" y="416" text-anchor="middle" fill="#6b7280" font-size="12">DashScope / ZhipuAI  |  50% cost  |  up to 50K requests/file</text>
-        <text x="450" y="434" text-anchor="middle" fill="#9ca3af" font-size="11">parallel submit → unified polling → auto retry</text>
+        <rect x="470" y="500" width="400" height="76" rx="8" fill="#fff" stroke="#1a56db" stroke-width="1.2" filter="url(#ds)"/>
+        <text x="490" y="524" fill="#1a56db" font-size="13" font-weight="600">Volume Target</text>
+        <text x="490" y="544" fill="#64748b" font-size="11.5">file_path + ai_result + 12 metadata columns</text>
+        <text x="490" y="562" fill="#94a3b8" font-size="10.5">→ auto-create table · incremental write</text>
 
-        <!-- Arrow down -->
-        <line x1="450" y1="452" x2="450" y2="478" stroke="#6b7280" stroke-width="1.5" marker-end="url(#arrow)"/>
-
-        <!-- LOAD label -->
-        <text x="30" y="498" fill="#1a56db" font-size="13" font-weight="700">LOAD</text>
-
-        <!-- Split arrows -->
-        <line x1="450" y1="482" x2="225" y2="482" stroke="#6b7280" stroke-width="1.5"/>
-        <line x1="450" y1="482" x2="675" y2="482" stroke="#6b7280" stroke-width="1.5"/>
-        <line x1="225" y1="482" x2="225" y2="502" stroke="#6b7280" stroke-width="1.5" marker-end="url(#arrow)"/>
-        <line x1="675" y1="482" x2="675" y2="502" stroke="#6b7280" stroke-width="1.5" marker-end="url(#arrow)"/>
-
-        <!-- Table Target -->
-        <rect x="30" y="506" width="390" height="80" rx="8" fill="#fff" stroke="#1a56db" stroke-width="1.5"/>
-        <text x="50" y="530" fill="#1a56db" font-size="13" font-weight="600">Table Target</text>
-        <text x="50" y="550" fill="#6b7280" font-size="12">key_columns + ai_result + 12 metadata cols</text>
-        <text x="50" y="568" fill="#9ca3af" font-size="11">→ auto-create table, type-aware casting</text>
-
-        <!-- Volume Target -->
-        <rect x="480" y="506" width="390" height="80" rx="8" fill="#fff" stroke="#1a56db" stroke-width="1.5"/>
-        <text x="500" y="530" fill="#1a56db" font-size="13" font-weight="600">Volume Target</text>
-        <text x="500" y="550" fill="#6b7280" font-size="12">file_path + ai_result + 12 metadata cols</text>
-        <text x="500" y="568" fill="#9ca3af" font-size="11">→ auto-create table, incremental write</text>
-
-        <!-- Config bar -->
-        <rect x="30" y="598" width="840" height="16" rx="4" fill="#f3f4f6"/>
-        <text x="450" y="611" text-anchor="middle" fill="#9ca3af" font-size="10">.env (secrets)  +  config.yaml (parameters)</text>
+        <rect x="30" y="592" width="840" height="18" rx="6" fill="#f1f5f9"/>
+        <text x="450" y="605" text-anchor="middle" fill="#94a3b8" font-size="10">.env (API keys, password)  ·  config.yaml (provider, sources, targets, prompts)</text>
       </svg>
     </div>
   </div>
 </section>
 
-<!-- ============ Lakehouse 能力 ============ -->
-<section>
+<!-- ══════ Lakehouse 能力 ══════ -->
+<section class="alt">
   <div class="container">
-    <h2>云器 Lakehouse 关键能力</h2>
-    <p>本方案充分利用了云器 Lakehouse 的以下产品特性：</p>
+    <h2><span class="section-icon">🏗️</span> 云器 Lakehouse 关键能力</h2>
+    <p class="section-desc">本方案充分利用了云器 Lakehouse 的以下产品特性：</p>
+    <div class="table-wrap">
     <table>
-      <tr><th style="width:220px">能力</th><th>在本方案中的作用</th></tr>
+      <tr><th style="width:240px">能力</th><th>在本方案中的作用</th></tr>
       <tr><td><strong>ZettaPark Python SDK</strong></td><td>通过 DataFrame API 读取源表、写入结果表，<code>session.sql()</code> 执行任意 SQL</td></tr>
-      <tr><td><strong>Volume（数据湖存储）</strong></td><td>托管图片、视频、音频等非结构化文件，支持 External / User / Table 三种 Volume 类型</td></tr>
+      <tr><td><strong>Volume（数据湖存储）</strong></td><td>托管图片、视频、音频等非结构化文件，支持 External / User / Table 三种类型</td></tr>
       <tr><td><strong>DIRECTORY() 函数</strong></td><td>SQL 级别列出 Volume 中的文件清单（路径、大小），用于文件发现</td></tr>
-      <tr><td><strong>GET_PRESIGNED_URL() 函数</strong></td><td>为 Volume 文件生成带有效期的 HTTP 预签名 URL，LLM API 可直接访问</td></tr>
-      <tr><td><strong>Auto DDL</strong></td><td>目标表不存在时自动 <code>CREATE TABLE</code>，缺少列时自动 <code>ALTER TABLE ADD COLUMN</code></td></tr>
-      <tr><td><strong>Schema 内省</strong></td><td>通过 <code>information_schema</code> 读取源表列类型，目标表自动匹配类型</td></tr>
+      <tr><td><strong>GET_PRESIGNED_URL()</strong></td><td>为 Volume 文件生成带有效期的 HTTP 预签名 URL，LLM API 可直接访问</td></tr>
+      <tr><td><strong>Auto DDL</strong></td><td>目标表不存在时自动 CREATE TABLE，缺少列时自动 ALTER TABLE ADD COLUMN</td></tr>
+      <tr><td><strong>Schema 内省</strong></td><td>通过 information_schema 读取源表列类型，目标表自动匹配数据类型</td></tr>
     </table>
+    </div>
   </div>
 </section>
 
-<!-- ============ 为什么选择 Batch ============ -->
+<!-- ══════ 为什么 Batch ══════ -->
 <section>
   <div class="container">
-    <h2>为什么选择 Batch 推理？</h2>
-    <p>LLM 服务商（如 DashScope、ZhipuAI）提供实时 API 和 Batch API 两种调用方式。对于大规模数据转换场景，Batch 模式在<strong>可靠性</strong>和<strong>完整性</strong>方面具有根本性优势：</p>
-
+    <h2><span class="section-icon">⚖️</span> 为什么选择 Batch 推理？</h2>
+    <p class="section-desc">对于大规模数据转换场景，Batch 模式在可靠性和完整性方面具有根本性优势：</p>
     <div class="card-grid">
       <div class="card">
-        <div class="icon">🛡️</div>
+        <div class="icon blue">🛡️</div>
         <h4>可靠性</h4>
-        <p>服务端统一调度、限流和重试。实时 API 在第 8,000 条网络中断即丢失进度；Batch API 保证每条请求都被处理，失败的单独报告在 error 文件中。</p>
+        <p>服务端统一调度、限流和重试。实时 API 在第 8,000 条网络中断即丢失进度；Batch 保证每条请求都被处理，失败的单独报告。</p>
       </div>
       <div class="card">
-        <div class="icon">✅</div>
+        <div class="icon green">✅</div>
         <h4>完整性</h4>
-        <p>每条请求都有独立的 status_code 和完整审计信息（模型、token、finish_reason）。不会因客户端崩溃而静默丢失数据。</p>
+        <p>每条请求都有独立的 status_code 和完整审计信息（模型、token、finish_reason），不会因客户端崩溃而静默丢数据。</p>
       </div>
       <div class="card">
-        <div class="icon">🔄</div>
+        <div class="icon amber">🔄</div>
         <h4>可恢复性</h4>
         <p>客户端进程中断后，Batch 任务在服务端继续运行。凭 batch_id 随时恢复，零数据丢失、零重复处理。</p>
       </div>
       <div class="card">
-        <div class="icon">💰</div>
+        <div class="icon gray">💰</div>
         <h4>成本优势</h4>
         <p>Batch API 统一定价为实时 API 的 <strong>50%</strong>。处理 5 万条数据，成本直接减半。</p>
       </div>
     </div>
 
+    <div class="table-wrap">
     <table>
       <tr><th>维度</th><th>SQL AI 函数</th><th>实时 API</th><th>Batch API（本方案）</th></tr>
       <tr><td>成本</td><td>标准价</td><td>标准价</td><td><strong>5 折</strong></td></tr>
@@ -286,35 +343,40 @@
       <tr><td>模态</td><td>仅文本</td><td>文本 + 多模态</td><td><strong>文本 + 图片 + 视频 + 音频</strong></td></tr>
       <tr><td>元数据</td><td>无</td><td>自行记录</td><td><strong>自动记录</strong>（模型/token/时间）</td></tr>
     </table>
+    </div>
   </div>
 </section>
 
-<!-- ============ 方案流程 ============ -->
-<section>
+<!-- ══════ 方案流程 ══════ -->
+<section class="alt">
   <div class="container">
-    <h2>方案流程</h2>
+    <h2><span class="section-icon">🔄</span> 方案流程</h2>
+    <p class="section-desc">四个阶段，全自动执行，支持中断恢复。</p>
     <div class="steps">
-      <div class="step">
-        <div class="step-content">
+      <div class="step-item">
+        <div class="step-num"></div>
+        <div class="step-body">
           <h4>Extract — 从 Lakehouse 读取数据</h4>
-          <p><strong>Table 模式：</strong>通过 ZettaPark SDK 执行 <code>SELECT key, text FROM table WHERE filter</code> 读取结构化文本。<br>
-          <strong>Volume 模式：</strong>通过 <code>DIRECTORY()</code> 发现文件 → 扩展名过滤 → 增量过滤（跳过已处理）→ <code>GET_PRESIGNED_URL()</code> 生成 HTTP URL。</p>
+          <p><strong>Table 模式：</strong>通过 ZettaPark SDK 执行 SQL 读取结构化文本。<strong>Volume 模式：</strong>通过 DIRECTORY() 发现文件 → 扩展名过滤 → 增量过滤（跳过已处理）→ GET_PRESIGNED_URL() 生成 HTTP URL。</p>
         </div>
       </div>
-      <div class="step">
-        <div class="step-content">
+      <div class="step-item">
+        <div class="step-num"></div>
+        <div class="step-body">
           <h4>Transform — 构建 JSONL 并提交 Batch 推理</h4>
-          <p>将源数据编码为 Batch API 要求的 JSONL 格式（每行一个请求，含 custom_id 用于结果回溯）。文本模式和多模态模式的 JSONL 结构不同，自动适配 Provider 的 content 格式。<strong>双数据源并行提交</strong>，两个 Batch 任务同时创建。</p>
+          <p>将源数据编码为 JSONL 格式（每行一个请求，含 custom_id 用于结果回溯）。文本和多模态模式自动适配 Provider 的 content 格式。<strong>双数据源并行提交</strong>，两个 Batch 任务同时创建。</p>
         </div>
       </div>
-      <div class="step">
-        <div class="step-content">
+      <div class="step-item">
+        <div class="step-num"></div>
+        <div class="step-body">
           <h4>Wait — 统一轮询等待</h4>
-          <p>所有 Batch 任务在一个轮询循环中并行等待。先完成的任务立即进入下载和写入阶段，不阻塞其他任务。支持中断后通过 <code>resume</code> 命令恢复。</p>
+          <p>所有 Batch 任务在一个轮询循环中并行等待。先完成的任务立即进入下载和写入阶段，不阻塞其他任务。支持 Ctrl+C 中断后通过 <code>resume</code> 命令恢复。</p>
         </div>
       </div>
-      <div class="step">
-        <div class="step-content">
+      <div class="step-item">
+        <div class="step-num"></div>
+        <div class="step-body">
           <h4>Load — 结果 + 元数据写回 Lakehouse</h4>
           <p>推理结果解析后写入各自的目标表。每行包含推理结果和 12 个元数据字段（模型、token 消耗、处理时间、状态码等）。目标表不存在时自动创建，列缺失时自动添加。</p>
         </div>
@@ -323,146 +385,135 @@
   </div>
 </section>
 
-<!-- ============ 支持的模型 ============ -->
+<!-- ══════ 支持的模型 ══════ -->
 <section>
   <div class="container">
-    <h2>支持的 Provider 与模型</h2>
+    <h2><span class="section-icon">🤖</span> 支持的 Provider 与模型</h2>
+    <p class="section-desc">通过 config.yaml 一键切换 Provider 和模型，无需改代码。</p>
+    <div class="table-wrap">
     <table>
       <tr><th>Provider</th><th>文本模型</th><th>多模态模型</th><th>媒体支持</th></tr>
-      <tr><td><strong>DashScope</strong>（阿里云百炼）</td><td>qwen3-max, qwen3.5-flash/plus, deepseek-r1/v3</td><td>qwen3-vl-plus/flash, qwen-vl-ocr, qwen-omni-turbo</td><td>图片、视频、音频</td></tr>
-      <tr><td><strong>ZhipuAI</strong>（智谱）</td><td>glm-4-flash/plus/long, glm-4-air</td><td>glm-4v-plus, glm-4v</td><td>图片、视频</td></tr>
+      <tr><td><strong>DashScope</strong><br><span style="font-size:12px;color:#94a3b8">阿里云百炼</span></td><td>qwen3-max, qwen3.5-flash/plus,<br>deepseek-r1/v3</td><td>qwen3-vl-plus/flash,<br>qwen-vl-ocr, qwen-omni-turbo</td><td>图片、视频、音频</td></tr>
+      <tr><td><strong>ZhipuAI</strong><br><span style="font-size:12px;color:#94a3b8">智谱</span></td><td>glm-4-flash/plus/long,<br>glm-4-air</td><td>glm-4v-plus, glm-4v</td><td>图片、视频</td></tr>
     </table>
-    <p style="color: var(--text-light); font-size: 13px; margin-top: 8px;">模型调研日期：2026-04-25。模型可用性可能变化，请以 Provider 官方文档为准。</p>
+    </div>
+    <p style="color:#94a3b8;font-size:12px;margin-top:8px;">模型调研日期：2026-04-25。模型可用性可能变化，请以 Provider 官方文档为准。</p>
   </div>
 </section>
 
-<!-- ============ 健壮性 ============ -->
-<section>
+<!-- ══════ 健壮性 ══════ -->
+<section class="alt">
   <div class="container">
-    <h2>健壮性设计</h2>
+    <h2><span class="section-icon">🛡️</span> 健壮性设计</h2>
+    <p class="section-desc">覆盖数据异常、网络中断、服务端故障等各类边界场景。</p>
+    <div class="table-wrap">
     <table>
       <tr><th style="width:280px">场景</th><th>处理方式</th></tr>
       <tr><td>目标表不存在</td><td>自动创建，Schema 从源表推断</td></tr>
-      <tr><td>目标表缺少元数据列</td><td>自动 <code>ALTER TABLE ADD COLUMN</code></td></tr>
+      <tr><td>目标表缺少元数据列</td><td>自动 ALTER TABLE ADD COLUMN</td></tr>
       <tr><td>源表类型与目标表不匹配</td><td>自动类型转换（Schema-aware casting）</td></tr>
       <tr><td>空文本 / 无新文件</td><td>跳过并记录 warning</td></tr>
       <tr><td>JSONL 单行 &gt; 6 MB</td><td>跳过并记录 warning</td></tr>
       <tr><td>总量超过 50K 行或 100 MB</td><td>报错并提示设置 batch_size</td></tr>
       <tr><td>API 限流 / 5xx 错误</td><td>指数退避重试（最多 5 次）</td></tr>
       <tr><td>轮询期间网络中断</td><td>捕获异常，继续重试</td></tr>
-      <tr><td>客户端进程中断</td><td>batch_id 已持久化，<code>resume</code> 恢复</td></tr>
-      <tr><td>预签名 URL 有效期短于推理窗口</td><td>记录 warning 提醒</td></tr>
+      <tr><td>客户端进程中断</td><td>batch_id 已持久化，resume 恢复</td></tr>
       <tr><td>Volume 文件已处理</td><td>增量过滤，自动跳过</td></tr>
     </table>
+    </div>
   </div>
 </section>
 
-<!-- ============ 实际验证 ============ -->
+<!-- ══════ 实际验证 ══════ -->
 <section>
   <div class="container">
-    <h2>实际验证</h2>
-    <div class="highlight success">
-      <strong>本方案已通过完整的端到端验证</strong>，以下为实际测试结果：
+    <h2><span class="section-icon">🧪</span> 实际验证</h2>
+    <div class="callout success">
+      <span class="callout-icon">✅</span>
+      <div class="callout-body"><strong>本方案已通过完整的端到端验证</strong>，双数据源并行提交，13 条请求全部成功，结果写入两张独立目标表。</div>
     </div>
 
     <h3>测试环境</h3>
-    <ul>
+    <ul style="margin-bottom:20px">
       <li>云器 Lakehouse：cn-shanghai-alicloud 区域</li>
       <li>LLM Provider：DashScope（阿里云百炼）</li>
-      <li>Python 3.10 + ZettaPark SDK</li>
+      <li>Python 3.10 + ZettaPark SDK 0.1.3</li>
     </ul>
 
-    <h3>测试场景：双数据源并行</h3>
+    <h3>测试结果</h3>
+    <div class="table-wrap">
     <table>
       <tr><th>数据源</th><th>模型</th><th>数据量</th><th>耗时</th><th>结果</th></tr>
       <tr><td>Table（结构化文本）</td><td>qwen3.5-flash</td><td>10 行产品数据</td><td>38 分钟</td><td><span class="verified">10/10 成功</span></td></tr>
       <tr><td>Volume（图片）</td><td>qwen3-vl-plus</td><td>3 张 JPG 图片</td><td>43 分钟</td><td><span class="verified">3/3 成功</span></td></tr>
     </table>
+    </div>
 
     <h3>验证要点</h3>
-    <ul>
-      <li>✅ <strong>并行提交</strong>：两个 Batch 任务在 1 秒内先后提交，统一轮询等待</li>
-      <li>✅ <strong>目标表自动创建</strong>：<code>mcp_demo.etl_table_results</code> 和 <code>mcp_demo.etl_volume_results</code> 均自动创建</li>
-      <li>✅ <strong>元数据完整</strong>：每行包含 model、provider、token 消耗、batch_id、处理时间等 12 个字段</li>
-      <li>✅ <strong>增量处理</strong>：重跑 Volume 模式，3 个文件全部被增量过滤跳过（0 新文件）</li>
-      <li>✅ <strong>北京时间</strong>：<code>processed_at</code> 字段正确记录 UTC+8 时间戳</li>
-      <li>✅ <strong>Resume 恢复</strong>：通过 <code>python -m ai_etl resume &lt;batch_id&gt;</code> 成功恢复并写入结果</li>
+    <ul class="check-list">
+      <li><strong>并行提交</strong>：两个 Batch 任务在 1 秒内先后提交，统一轮询等待</li>
+      <li><strong>目标表自动创建</strong>：etl_table_results 和 etl_volume_results 均自动创建</li>
+      <li><strong>元数据完整</strong>：每行包含 model、provider、token 消耗、batch_id、处理时间等 12 个字段</li>
+      <li><strong>增量处理</strong>：重跑 Volume 模式，3 个文件全部被增量过滤跳过（0 新文件）</li>
+      <li><strong>Resume 恢复</strong>：通过 resume 命令成功恢复中断的任务并写入结果</li>
     </ul>
 
-    <h3>Table 模式推理结果示例</h3>
-    <table>
-      <tr><th>product_id</th><th>ai_result</th><th>model</th><th>tokens</th></tr>
-      <tr><td>1001</td><td>这款智能手表集运动监测与时尚设计于一体，精准记录您的每一步…</td><td>qwen3.5-flash</td><td>156</td></tr>
-      <tr><td>1002</td><td>天然有机棉材质，亲肤透气，给宝宝最温柔的呵护…</td><td>qwen3.5-flash</td><td>142</td></tr>
-    </table>
-
-    <h3>Volume 模式推理结果示例</h3>
-    <table>
-      <tr><th>file_path</th><th>ai_result</th><th>model</th><th>tokens</th></tr>
-      <tr><td>ai_etl_test/test_img_1.jpg</td><td>橙红色的朱顶红花朵盛开，花瓣舒展，花蕊金黄，背景柔和模糊…</td><td>qwen3-vl-plus</td><td>131</td></tr>
-      <tr><td>ai_etl_test/test_img_2.jpg</td><td>夜空中绽放一朵巨大的白色烟花，呈放射状星芒形态…</td><td>qwen3-vl-plus</td><td>145</td></tr>
-    </table>
-  </div>
-</section>
-
-<!-- ============ 快速开始 ============ -->
-<section>
-  <div class="container">
-    <h2>快速开始</h2>
-    <div class="steps">
-      <div class="step">
-        <div class="step-content">
-          <h4>安装</h4>
-          <pre>git clone https://github.com/yunqiqiliang/ai_etl.git
-cd ai_etl && pip install -e .</pre>
+    <h3>推理结果示例</h3>
+    <div class="card-grid" style="margin-top:16px">
+      <div class="card">
+        <h4 style="color:var(--primary);font-size:14px;margin-bottom:12px">📊 Table 模式</h4>
+        <div class="table-wrap" style="margin:0">
+        <table>
+          <tr><th>product_id</th><th>ai_result</th><th>tokens</th></tr>
+          <tr><td>1001</td><td style="font-size:13px">这款智能手表集运动监测与时尚设计于一体…</td><td>156</td></tr>
+          <tr><td>1002</td><td style="font-size:13px">天然有机棉材质，亲肤透气，给宝宝最温柔的呵护…</td><td>142</td></tr>
+        </table>
         </div>
       </div>
-      <div class="step">
-        <div class="step-content">
-          <h4>配置凭证（.env）</h4>
-          <pre>cp .env.example .env
-# 编辑 .env，填入 API Key 和 Lakehouse 密码</pre>
-        </div>
-      </div>
-      <div class="step">
-        <div class="step-content">
-          <h4>配置 ETL 参数（config.yaml）</h4>
-          <pre>cp config.yaml.example config.yaml
-# 编辑 config.yaml，配置 provider、源表/Volume、目标表、prompt</pre>
-        </div>
-      </div>
-      <div class="step">
-        <div class="step-content">
-          <h4>运行</h4>
-          <pre>python -m ai_etl run</pre>
-          <p>Batch 推理通常需要 10–60 分钟。可随时 Ctrl+C，后续用 <code>python -m ai_etl resume &lt;batch_id&gt;</code> 恢复。</p>
-        </div>
-      </div>
-      <div class="step">
-        <div class="step-content">
-          <h4>验证结果</h4>
-          <pre>-- 在 Lakehouse Studio 或 SQL 客户端中查询
-SELECT * FROM your_schema.your_results LIMIT 5;</pre>
+      <div class="card">
+        <h4 style="color:var(--primary);font-size:14px;margin-bottom:12px">🖼️ Volume 模式</h4>
+        <div class="table-wrap" style="margin:0">
+        <table>
+          <tr><th>file_path</th><th>ai_result</th><th>tokens</th></tr>
+          <tr><td style="font-size:12px">test_img_1.jpg</td><td style="font-size:13px">橙红色的朱顶红花朵盛开，花瓣舒展…</td><td>131</td></tr>
+          <tr><td style="font-size:12px">test_img_2.jpg</td><td style="font-size:13px">夜空中绽放一朵巨大的白色烟花…</td><td>145</td></tr>
+        </table>
         </div>
       </div>
     </div>
   </div>
 </section>
 
-<!-- ============ Footer ============ -->
+<!-- ══════ 快速开始 ══════ -->
+<section class="alt">
+  <div class="container">
+    <h2><span class="section-icon">🚀</span> 快速开始</h2>
+    <p class="section-desc">五步完成从安装到验证的完整流程。</p>
+    <div class="steps">
+      <div class="step-item"><div class="step-num"></div><div class="step-body"><h4>安装</h4><pre>git clone https://github.com/yunqiqiliang/ai_etl.git
+cd ai_etl && pip install -e .</pre></div></div>
+      <div class="step-item"><div class="step-num"></div><div class="step-body"><h4>配置凭证</h4><pre>cp .env.example .env
+# 编辑 .env，填入 API Key 和 Lakehouse 密码</pre></div></div>
+      <div class="step-item"><div class="step-num"></div><div class="step-body"><h4>配置 ETL 参数</h4><pre>cp config.yaml.example config.yaml
+# 编辑 config.yaml，配置 provider、源表/Volume、目标表、prompt</pre></div></div>
+      <div class="step-item"><div class="step-num"></div><div class="step-body"><h4>运行</h4><pre>python -m ai_etl run</pre><p>Batch 推理通常需要 10–60 分钟。可随时 Ctrl+C，后续用 <code>python -m ai_etl resume &lt;batch_id&gt;</code> 恢复。</p></div></div>
+      <div class="step-item"><div class="step-num"></div><div class="step-body"><h4>验证结果</h4><pre>SELECT * FROM your_schema.your_results LIMIT 5;</pre></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════ Footer ══════ -->
 <footer>
   <div class="container">
-    <p style="margin-bottom: 8px;">
-      <strong style="color: #e2e8f0;">云器 Lakehouse × LLM 批量推理 — 多模态 AI ETL 解决方案</strong>
+    <p class="footer-title">云器 Lakehouse × LLM 批量推理 — 多模态 AI ETL 解决方案</p>
+    <p class="footer-links">
+      开源项目：<a href="https://github.com/yunqiqiliang/ai_etl">github.com/yunqiqiliang/ai_etl</a>
+      &nbsp;&nbsp;·&nbsp;&nbsp;
+      云器 Lakehouse：<a href="https://www.yunqi.tech/documents/Overview">yunqi.tech</a>
     </p>
-    <p>
-      开源项目地址：<a href="https://github.com/yunqiqiliang/ai_etl">github.com/yunqiqiliang/ai_etl</a>
-      &nbsp;|&nbsp;
-      云器 Lakehouse 文档：<a href="https://www.yunqi.tech/documents/Overview">yunqi.tech</a>
-    </p>
-    <p style="margin-top: 12px; font-size: 12px; color: #64748b;">
-      本方案经过实际项目验证（DashScope qwen3.5-flash + qwen3-vl-plus，双数据源并行，端到端测试通过）。
-      如有问题请通过 GitHub Issues 反馈。
+    <p class="footer-note">
+      本方案经过实际项目验证（DashScope qwen3.5-flash + qwen3-vl-plus，双数据源并行，端到端测试通过）。<br>
+      详细使用文档和源代码请参考 GitHub 仓库。如有问题请通过 GitHub Issues 反馈。
     </p>
   </div>
 </footer>

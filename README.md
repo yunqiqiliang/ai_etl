@@ -1,28 +1,24 @@
 # Multimodal AI ETL
 
-**Multimodal AI ETL: Lakehouse → LLM Batch Inference → Lakehouse**
+**Lakehouse → LLM Batch Inference → Lakehouse**
 
 From ClickZetta Lakehouse, read structured text (tables) or unstructured files (images, video, audio from Volumes), run LLM batch inference at 50% cost, and write results back with full metadata.
 
 Supports multiple providers (DashScope / ZhipuAI) and multiple modalities (text, image, video, audio), switchable via config.
 
-## Realtime API vs Batch API
+## Why Batch Inference?
 
 LLM providers like DashScope and ZhipuAI offer two ways to call their models:
 
-- **Realtime API** — Synchronous, one request at a time. You send a prompt, wait for the response, then send the next. Good for interactive use (chatbots, copilots), but expensive at scale: you pay full price, manage your own concurrency (QPM/TPM limits), and handle retries yourself.
+- **Realtime API** — Synchronous, one request at a time. Good for interactive use (chatbots, copilots), but expensive at scale: you pay full price, manage your own concurrency (QPM/TPM limits), and handle retries yourself.
 
-- **Batch API** — Asynchronous, bulk processing. You upload a JSONL file with thousands of requests, the provider processes them server-side over minutes to hours, and you download the results when done. **50% cost savings**, automatic scheduling, built-in retry, and error files for failed requests. The tradeoff is latency: results are not instant.
+- **Batch API** — Asynchronous, bulk processing. You upload a JSONL file with thousands of requests, the provider processes them server-side, and you download the results when done. **50% cost savings**, automatic scheduling, built-in retry, and error files for failed requests. The tradeoff is latency: results take minutes to hours.
 
 For large-scale AI Transform (tens of thousands of rows or files), **Batch mode is not just cheaper — it is fundamentally more reliable and complete**:
 
 - **Reliability**: The provider handles scheduling, rate limiting, and transient failures internally. With Realtime API, a network hiccup at row 8,000 of 50,000 means you lose progress and must build your own checkpoint/retry logic. Batch API guarantees every request is attempted, and failed ones are reported in a separate error file — nothing is silently lost.
-- **Completeness**: Batch results include a per-request status code, so you know exactly which rows succeeded and which failed. You get a complete audit trail (model, tokens, finish_reason) for every single request, not just the ones that happened to succeed before your script crashed.
+- **Completeness**: Batch results include a per-request status code, so you know exactly which rows succeeded and which failed. You get a complete audit trail (model, tokens, finish_reason) for every single request.
 - **Resumability**: If your client process dies mid-wait, the batch job continues running server-side. You can resume later with just the batch_id — no data is lost, no work is repeated.
-
-This project uses the **Batch API** to run AI ETL at scale — reading data from ClickZetta Lakehouse, submitting batch inference jobs, and writing results back with full metadata.
-
-## Why Batch Inference?
 
 | Dimension | SQL AI Function | Realtime API | Batch API (this project) |
 |-----------|----------------|-------------|--------------------------|
@@ -246,10 +242,8 @@ After the pipeline completes, verify the results in your Lakehouse:
 
 ```sql
 -- In Lakehouse Studio or any SQL client
--- Check row count
 SELECT COUNT(*) FROM your_schema.your_results;
 
--- View results with metadata
 SELECT key_column, ai_result, model, total_tokens, processed_at
 FROM your_schema.your_results
 LIMIT 5;
@@ -261,20 +255,6 @@ Expected result:
 |---|---|---|---|---|
 | 1001 | This product features... | qwen3.5-flash | 156 | 2026-04-25T12:30:00+08:00 |
 | 1002 | A premium quality... | qwen3.5-flash | 142 | 2026-04-25T12:30:00+08:00 |
-
-You can also check from Python:
-
-```python
-from ai_etl.config import Config
-from ai_etl.lakehouse import LakehouseClient
-
-cfg = Config()
-lh = LakehouseClient(config=cfg)
-rows = lh.session.sql("SELECT * FROM your_schema.your_results LIMIT 5").collect()
-for r in rows:
-    print(r)
-lh.close()
-```
 
 **Verify incremental processing** (Volume mode only) — run the pipeline again, it should skip already-processed files:
 
@@ -291,11 +271,13 @@ python -m ai_etl run
 | `未找到 dashscope 的 API Key` | `.env` not loaded | Check `.env` is in project root, key name matches exactly |
 | `缺少 ClickZetta 连接参数` | Missing credentials | Check `CLICKZETTA_USERNAME` / `CLICKZETTA_PASSWORD` in `.env` |
 | `未启用任何数据源` | No source enabled | Set `etl.sources.table.enabled: true` in `config.yaml` |
+| `源表 xxx 不存在` | Wrong table name | Check `etl.sources.table.table` value, verify schema.table spelling |
 | `batch 任务失败` | Invalid model or quota | Check model name in provider docs, verify API key has batch access |
-| Stuck at `in_progress` for hours | Normal for large batches | DashScope batch can take up to 24h; check status with `python -m ai_etl status <batch_id>` |
-| `请安装 clickzetta-zettapark-python` | Missing dependency | Run `pip install -e .` again |
+| Stuck at `in_progress` for hours | Normal for large batches | DashScope batch can take up to 24h; check with `python -m ai_etl status <batch_id>` |
 
 ## Two Source Modes
+
+Both sources can be enabled simultaneously — batches are submitted in parallel and polled together.
 
 ### Table Mode (structured text)
 
@@ -335,39 +317,27 @@ Volume mode features:
 - **Multi-format**: images (.jpg/.png/.gif/.webp), video (.mp4/.mov), audio (.mp3/.wav)
 - **Provider-aware**: auto-adapts content format per provider (image_url / video_url / input_audio)
 
-## CLI
+## Usage
+
+### CLI
 
 ```bash
-# Run all enabled sources (parallel batch submission)
-python -m ai_etl run
-
-# Run single source
-python -m ai_etl run --source-type table
-python -m ai_etl run --source-type volume
-
-# Override provider/model
-python -m ai_etl run --provider zhipuai --model glm-4-flash
-
-# Query batch status
-python -m ai_etl status <batch_id>
-
-# Resume interrupted job
-python -m ai_etl resume <batch_id>
+python -m ai_etl run                                    # all enabled sources
+python -m ai_etl run --source-type table                # table only
+python -m ai_etl run --source-type volume               # volume only
+python -m ai_etl run --provider zhipuai --model glm-4-flash  # override provider
+python -m ai_etl status <batch_id>                      # check batch status
+python -m ai_etl resume <batch_id>                      # resume interrupted job
 ```
 
-## Python API
+### Python API
 
 ```python
 from ai_etl.pipeline import AIETLPipeline
 
-# Run all enabled sources (both table + volume if configured)
 pipeline = AIETLPipeline()
-stats = pipeline.run()
-pipeline.close()
-
-# Run single source type
-pipeline = AIETLPipeline()
-stats = pipeline.run(source_type="volume")
+stats = pipeline.run()                    # all enabled sources
+stats = pipeline.run(source_type="table") # single source
 pipeline.close()
 ```
 
@@ -392,114 +362,6 @@ Both modes auto-create target tables with these metadata columns:
 
 Volume mode adds: `file_path` (STRING), `volume_name` (STRING), `file_size` (BIGINT).
 
-## Supported Providers & Models
-
-| Provider | Text Models | Multimodal Models | Media Support |
-|----------|------------|-------------------|---------------|
-| **DashScope** | qwen3.5-flash, qwen3-max, deepseek-r1/v3 | qwen3-vl-plus/flash, qwen-vl-max, qwen-vl-ocr, qwen-omni-turbo | Image, Video, Audio |
-| **ZhipuAI** | glm-4-flash, glm-4-plus | glm-4v, glm-4v-plus | Image, Video |
-
-## Batch Model Support Details
-
-> Survey date: 2026-04-25. Model availability changes frequently — check provider docs for latest.
-
-### DashScope (阿里云百炼)
-
-Docs: https://help.aliyun.com/zh/model-studio/batch-inference
-
-**Text generation models (source_type: table)**
-
-| Model | Batch Support | Notes |
-|-------|:---:|-------|
-| qwen3-max | ✅ | |
-| qwen3.5-plus | ✅ | Thinking mode on by default, set `enable_thinking: false` to save cost |
-| qwen3.5-flash | ✅ | Thinking mode on by default |
-| qwen-max / qwen-max-latest | ✅ | |
-| qwen-plus / qwen-plus-latest | ✅ | |
-| qwen-turbo / qwen-turbo-latest | ✅ | |
-| qwen-long / qwen-long-latest | ✅ | |
-| qwq-plus | ✅ | Reasoning model |
-| deepseek-r1 | ✅ | Third-party |
-| deepseek-v3 / deepseek-v3.2 | ✅ | Third-party |
-
-**Multimodal models (source_type: volume)**
-
-| Model | Image | Video | Audio | OCR | Notes |
-|-------|:---:|:---:|:---:|:---:|-------|
-| qwen3-vl-plus | ✅ | ✅ | ❌ | ❌ | Recommended for image/video |
-| qwen3-vl-flash | ✅ | ✅ | ❌ | ❌ | Faster, lower cost |
-| qwen3.5-plus | ✅ | ✅ | ❌ | ❌ | Also supports multimodal input |
-| qwen3.5-flash | ✅ | ✅ | ❌ | ❌ | Also supports multimodal input |
-| qwen-vl-max / qwen-vl-max-latest | ✅ | ✅ | ❌ | ❌ | |
-| qwen-vl-plus / qwen-vl-plus-latest | ✅ | ✅ | ❌ | ❌ | |
-| qwen-vl-ocr / qwen-vl-ocr-latest | ✅ | ❌ | ❌ | ✅ | Text extraction from images |
-| qwen-omni-turbo | ✅ | ✅ | ✅ | ❌ | Only model supporting audio |
-
-**Embedding models**
-
-| Model | Batch Support |
-|-------|:---:|
-| text-embedding-v1/v2/v3/v4 | ✅ |
-
-**Limits**: ≤ 50,000 requests/file, ≤ 500 MB/file, ≤ 6 MB/line. Cost = 50% of realtime.
-
-### ZhipuAI (智谱)
-
-Docs: https://docs.bigmodel.cn/cn/guide/tools/batch
-
-**Text generation models (source_type: table)**
-
-| Model | Batch Support | Queue Limit | Notes |
-|-------|:---:|---:|-------|
-| glm-4-air-250414 | ✅ | 2M | High throughput |
-| glm-4-flashx-250414 | ✅ | 2M | High throughput |
-| glm-4-plus | ✅ | 2M | |
-| glm-4-0520 | ✅ | 500K | |
-| glm-4 | ✅ | 50K | |
-| glm-4-long | ✅ | 200K | Long context |
-| glm-4-flash | ✅ | — | Free tier available |
-
-**Multimodal models (source_type: volume)**
-
-| Model | Image | Video | Audio | Queue Limit | Notes |
-|-------|:---:|:---:|:---:|---:|-------|
-| glm-4v-plus | ✅ | ❌ | ❌ | 10K | Recommended for image |
-| glm-4v-plus-0111 | ✅ | ❌ | ❌ | 10K | |
-| glm-4v | ✅ | ❌ | ❌ | 10K | |
-
-**Image generation models**
-
-| Model | Queue Limit |
-|-------|---:|
-| cogview-4-250304 | 10K |
-| cogview-3-plus | 10K |
-
-**Embedding models**
-
-| Model | Batch Support | Queue Limit |
-|-------|:---:|---:|
-| embedding-2 | ✅ | 2M |
-| embedding-3 | ✅ | 2M |
-
-**Limits**: ≤ 50,000 requests/file, ≤ 100 MB/file, custom_id ≥ 6 chars. Cost = 50% of realtime. `completion_window` deprecated (auto-scheduled, ~24h, 7-day timeout).
-
-## Project Structure
-
-```
-ai_etl/
-├── .env.example              # Credentials template
-├── config.yaml.example       # Config template
-├── ai_etl/
-│   ├── __main__.py           # CLI (python -m ai_etl)
-│   ├── config.py             # Config loader (.env + YAML)
-│   ├── media_types.py        # Media type detection + content builders
-│   ├── result_keys.py        # Field constants + key encoding
-│   ├── lakehouse.py          # Lakehouse read/write + Volume ops
-│   ├── pipeline.py           # ETL orchestration (table + volume)
-│   └── providers/            # DashScope + ZhipuAI batch providers
-└── tests/                    # 61 unit tests
-```
-
 ## Robustness
 
 | Scenario | Handling |
@@ -520,3 +382,66 @@ ai_etl/
 | No source enabled | Clear error with config path hint |
 | Dual source enabled | Parallel batch submission, unified polling |
 | Table name without schema prefix | Auto-qualify with clickzetta.schema |
+
+## Project Structure
+
+```
+ai_etl/
+├── .env.example              # Credentials template
+├── config.yaml.example       # Config template
+├── ai_etl/
+│   ├── __main__.py           # CLI (python -m ai_etl)
+│   ├── config.py             # Config loader (.env + YAML)
+│   ├── media_types.py        # Media type detection + content builders
+│   ├── result_keys.py        # Field constants + key encoding
+│   ├── lakehouse.py          # Lakehouse read/write + Volume ops
+│   ├── pipeline.py           # ETL orchestration (table + volume)
+│   └── providers/            # DashScope + ZhipuAI batch providers
+└── tests/                    # 61 unit tests
+```
+
+## Appendix: Batch Model Support Details
+
+> Survey date: 2026-04-25. Model availability changes frequently — check provider docs for latest.
+
+### DashScope (阿里云百炼)
+
+Docs: https://help.aliyun.com/zh/model-studio/batch-inference
+
+**Text models** | **Multimodal models** | **Embedding models**
+
+| Model | Batch | Notes |
+|-------|:---:|-------|
+| qwen3-max | ✅ | |
+| qwen3.5-plus | ✅ | Thinking mode on by default |
+| qwen3.5-flash | ✅ | Thinking mode on by default |
+| qwen-max / plus / turbo / long | ✅ | |
+| qwq-plus | ✅ | Reasoning model |
+| deepseek-r1 / v3 | ✅ | Third-party |
+
+| Model | Image | Video | Audio | Notes |
+|-------|:---:|:---:|:---:|-------|
+| qwen3-vl-plus | ✅ | ✅ | ❌ | Recommended |
+| qwen3-vl-flash | ✅ | ✅ | ❌ | Lower cost |
+| qwen-vl-max / plus | ✅ | ✅ | ❌ | |
+| qwen-vl-ocr | ✅ | ❌ | ❌ | OCR extraction |
+| qwen-omni-turbo | ✅ | ✅ | ✅ | Only audio model |
+| text-embedding-v1/v2/v3/v4 | — | — | — | Embedding |
+
+**Limits**: ≤ 50,000 requests/file, ≤ 500 MB/file, ≤ 6 MB/line. Cost = 50% of realtime.
+
+### ZhipuAI (智谱)
+
+Docs: https://docs.bigmodel.cn/cn/guide/tools/batch
+
+| Model | Batch | Queue Limit | Notes |
+|-------|:---:|---:|-------|
+| glm-4-air / flashx (250414) | ✅ | 2M | High throughput |
+| glm-4-plus | ✅ | 2M | |
+| glm-4 / glm-4-0520 | ✅ | 50K–500K | |
+| glm-4-long | ✅ | 200K | Long context |
+| glm-4-flash | ✅ | — | Free tier |
+| glm-4v-plus / glm-4v | ✅ | 10K | Image only |
+| embedding-2 / embedding-3 | ✅ | 2M | Embedding |
+
+**Limits**: ≤ 50,000 requests/file, ≤ 100 MB/file, custom_id ≥ 6 chars. Cost = 50% of realtime.

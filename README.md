@@ -105,8 +105,18 @@ Supports multiple providers (DashScope / ZhipuAI) and multiple modalities (text,
   - [DashScope](https://help.aliyun.com/zh/model-studio/get-api-key) (recommended, supports all modalities)
   - [ZhipuAI](https://open.bigmodel.cn/) (install extra: `pip install ai-etl[zhipuai]`)
 - **Source data ready in Lakehouse** — depending on which mode you use:
-  - **Table mode**: a table with a key column and a text column (e.g. product reviews, support tickets)
-  - **Volume mode**: files uploaded to a Lakehouse Volume (images, video, or audio). See [Volume docs](https://www.yunqi.tech/documents/datalake_volume) for how to create Volumes and upload files via `PUT` command or Zettapark SDK
+  - **Table mode**: a table containing at least two columns:
+    - A **key column** (unique identifier per row, e.g. `id`, `product_id`). Supports composite keys via comma-separated names
+    - A **text column** (the content to send to the LLM, e.g. `review_text`, `description`). Rows with empty text are skipped
+  - **Volume mode**: files uploaded to a Lakehouse [Volume](https://www.yunqi.tech/documents/datalake_volume) (via `PUT` command, Zettapark SDK, or Lakehouse Studio). Supported file formats:
+
+    | Type | Supported Extensions |
+    |------|---------------------|
+    | Image | `.jpg` `.jpeg` `.png` `.gif` `.bmp` `.webp` `.tiff` `.tif` |
+    | Video | `.mp4` `.avi` `.mov` `.mkv` `.webm` |
+    | Audio | `.mp3` `.wav` `.flac` `.ogg` `.m4a` (DashScope only) |
+
+    Files with other extensions are ignored. Volume types supported: external Volume, User Volume, Table Volume
 - **Network access** — the machine running this pipeline needs outbound HTTPS access to both the Lakehouse API and the LLM provider API
 
 ## Quick Start

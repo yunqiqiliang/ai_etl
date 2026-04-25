@@ -97,6 +97,15 @@ Supports multiple providers (DashScope / ZhipuAI) and multiple modalities (text,
 +=============================================================================+
 ```
 
+### ClickZetta Lakehouse Features Used
+
+- **[ZettaPark Python SDK](https://www.yunqi.tech/documents/ZettaparkQuickStart)** — DataFrame API for reading source tables and writing result tables via `session.sql()` and `create_dataframe().write.save_as_table()`
+- **[Volume](https://www.yunqi.tech/documents/datalake_volume)** — Managed object storage for unstructured files (images, video, audio), supports External / User / Table Volume types
+- **[DIRECTORY()](https://www.yunqi.tech/documents/unstructure_data_analysis)** — SQL function to list files in a Volume with relative_path and size metadata
+- **[GET_PRESIGNED_URL()](https://www.yunqi.tech/documents/GET_PRESIGNED_URL)** — Generate time-limited HTTP-accessible URLs for Volume files, enabling LLM APIs to fetch media content directly
+- **[Auto DDL](https://www.yunqi.tech/documents/create-table-ddl)** — Target tables are auto-created with `CREATE TABLE IF NOT EXISTS`, columns auto-added with `ALTER TABLE ADD COLUMN`
+- **[information_schema](https://www.yunqi.tech/documents/worksapce-informaiton_schema-views)** — Table schema introspection for type-aware column mapping between source and target tables
+
 ## Prerequisites
 
 - **Python 3.10+** (zettapark requires 3.10 or later)

@@ -97,11 +97,20 @@ Supports multiple providers (DashScope / ZhipuAI) and multiple modalities (text,
 +=============================================================================+
 ```
 
+## Prerequisites
+
+- **Python 3.10+** (zettapark requires 3.10 or later)
+- **ClickZetta Lakehouse account** — [sign up](https://www.yunqi.tech/documents/LoggingIn) and get service/instance/workspace info
+- **LLM API Key** — at least one of:
+  - [DashScope](https://help.aliyun.com/zh/model-studio/get-api-key) (recommended, supports all modalities)
+  - [ZhipuAI](https://open.bigmodel.cn/) (install extra: `pip install ai-etl[zhipuai]`)
+
 ## Quick Start
 
 ```bash
 # 1. Install
 cd ai_etl && pip install -e .
+# For ZhipuAI support: pip install -e ".[zhipuai]"
 
 # 2. Configure credentials
 cp .env.example .env        # edit: API keys + Lakehouse password
@@ -116,6 +125,10 @@ python -m ai_etl run
 python -m ai_etl run --source-type table
 python -m ai_etl run --source-type volume
 ```
+
+> **Note**: Batch inference runs server-side and typically takes **10–60 minutes** to complete.
+> The pipeline polls for status every `poll_interval` seconds (default 300s, set lower for testing).
+> You can safely Ctrl+C and later resume with `python -m ai_etl resume <batch_id>`.
 
 ## Two Source Modes
 

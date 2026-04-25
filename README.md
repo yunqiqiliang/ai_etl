@@ -14,6 +14,12 @@ LLM providers like DashScope and ZhipuAI offer two ways to call their models:
 
 - **Batch API** — Asynchronous, bulk processing. You upload a JSONL file with thousands of requests, the provider processes them server-side over minutes to hours, and you download the results when done. **50% cost savings**, automatic scheduling, built-in retry, and error files for failed requests. The tradeoff is latency: results are not instant.
 
+For large-scale AI Transform (tens of thousands of rows or files), **Batch mode is not just cheaper — it is fundamentally more reliable and complete**:
+
+- **Reliability**: The provider handles scheduling, rate limiting, and transient failures internally. With Realtime API, a network hiccup at row 8,000 of 50,000 means you lose progress and must build your own checkpoint/retry logic. Batch API guarantees every request is attempted, and failed ones are reported in a separate error file — nothing is silently lost.
+- **Completeness**: Batch results include a per-request status code, so you know exactly which rows succeeded and which failed. You get a complete audit trail (model, tokens, finish_reason) for every single request, not just the ones that happened to succeed before your script crashed.
+- **Resumability**: If your client process dies mid-wait, the batch job continues running server-side. You can resume later with just the batch_id — no data is lost, no work is repeated.
+
 This project uses the **Batch API** to run AI ETL at scale — reading data from ClickZetta Lakehouse, submitting batch inference jobs, and writing results back with full metadata.
 
 ## Why Batch Inference?

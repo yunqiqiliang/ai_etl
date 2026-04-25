@@ -1,10 +1,20 @@
-# AI ETL
+# Multimodal AI ETL
 
 **Multimodal AI ETL: Lakehouse → LLM Batch Inference → Lakehouse**
 
 From ClickZetta Lakehouse, read structured text (tables) or unstructured files (images, video, audio from Volumes), run LLM batch inference at 50% cost, and write results back with full metadata.
 
 Supports multiple providers (DashScope / ZhipuAI) and multiple modalities (text, image, video, audio), switchable via config.
+
+## Realtime API vs Batch API
+
+LLM providers like DashScope and ZhipuAI offer two ways to call their models:
+
+- **Realtime API** — Synchronous, one request at a time. You send a prompt, wait for the response, then send the next. Good for interactive use (chatbots, copilots), but expensive at scale: you pay full price, manage your own concurrency (QPM/TPM limits), and handle retries yourself.
+
+- **Batch API** — Asynchronous, bulk processing. You upload a JSONL file with thousands of requests, the provider processes them server-side over minutes to hours, and you download the results when done. **50% cost savings**, automatic scheduling, built-in retry, and error files for failed requests. The tradeoff is latency: results are not instant.
+
+This project uses the **Batch API** to run AI ETL at scale — reading data from ClickZetta Lakehouse, submitting batch inference jobs, and writing results back with full metadata.
 
 ## Why Batch Inference?
 

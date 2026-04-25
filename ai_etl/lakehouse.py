@@ -85,11 +85,11 @@ class LakehouseClient:
     ) -> List[Dict[str, str]]:
         """从源表读取数据，返回字典列表。"""
         cfg = self._config
-        table = table or cfg.etl_source_table
-        key_columns = key_columns or cfg.etl_source_key_columns
-        text_column = text_column or cfg.etl_source_text_column
-        filter_expr = filter_expr if filter_expr is not None else cfg.etl_source_filter
-        batch_size = batch_size if batch_size is not None else cfg.etl_source_batch_size
+        table = table or cfg.etl_table_name
+        key_columns = key_columns or cfg.etl_table_key_columns
+        text_column = text_column or cfg.etl_table_text_column
+        filter_expr = filter_expr if filter_expr is not None else cfg.etl_table_filter
+        batch_size = batch_size if batch_size is not None else cfg.etl_table_batch_size
 
         if not table:
             raise LakehouseError("未指定源表名。请在 config.yaml 的 etl.source.table 中配置。")
@@ -139,7 +139,7 @@ class LakehouseClient:
             volume_sql_ref = cfg.get_volume_sql_ref()
         file_types = file_types if file_types is not None else cfg.etl_volume_file_types
         subdirectory = subdirectory if subdirectory is not None else cfg.etl_volume_subdirectory
-        target_table = target_table or cfg.etl_target_table
+        target_table = target_table or cfg.resolve_volume_target()
         batch_size = batch_size if batch_size is not None else cfg.etl_volume_batch_size
 
         is_user_volume = volume_sql_ref.upper().strip() == "USER VOLUME"
@@ -277,8 +277,8 @@ class LakehouseClient:
 
         cfg = self._config
         model = model or cfg.resolve_model("volume")
-        user_prompt = user_prompt or cfg.etl_source_user_prompt
-        system_prompt = system_prompt or cfg.etl_source_system_prompt
+        user_prompt = user_prompt or cfg.etl_volume_user_prompt
+        system_prompt = system_prompt or cfg.etl_volume_system_prompt
         provider_name = provider_name or cfg.provider_name
 
         if output_path is None:
@@ -377,7 +377,7 @@ class LakehouseClient:
         )
 
         cfg = self._config
-        target_table = target_table or cfg.etl_target_table
+        target_table = target_table or cfg.resolve_volume_target()
         result_column = result_column or cfg.etl_target_result_column
         write_mode = write_mode or cfg.etl_target_write_mode
 
@@ -440,7 +440,7 @@ class LakehouseClient:
                 row_dict[STATUS_CODE] = r.get(STATUS_CODE, 0)
                 row_dict[FINISH_REASON] = r.get(FINISH_REASON, "")
                 row_dict[RESPONSE_ID] = r.get(RESPONSE_ID, "")
-                row_dict[SOURCE_TEXT] = cfg.etl_source_user_prompt  # user_prompt as source context
+                row_dict[SOURCE_TEXT] = cfg.etl_volume_user_prompt  # user_prompt as source context
                 row_dict[RAW_RESPONSE] = r.get(RAW_RESPONSE, "")
 
             typed_row = []
@@ -498,8 +498,8 @@ class LakehouseClient:
         import time
 
         cfg = self._config
-        key_columns = key_columns or cfg.etl_source_key_columns
-        text_column = text_column or cfg.etl_source_text_column
+        key_columns = key_columns or cfg.etl_table_key_columns
+        text_column = text_column or cfg.etl_table_text_column
         model = model or cfg.model_name
         system_prompt = system_prompt or cfg.system_prompt
 
@@ -609,11 +609,11 @@ class LakehouseClient:
             写入的行数。
         """
         cfg = self._config
-        key_columns = key_columns or cfg.etl_source_key_columns
-        target_table = target_table or cfg.etl_target_table
+        key_columns = key_columns or cfg.etl_table_key_columns
+        target_table = target_table or cfg.resolve_table_target()
         result_column = result_column or cfg.etl_target_result_column
         write_mode = write_mode or cfg.etl_target_write_mode
-        text_column = cfg.etl_source_text_column
+        text_column = cfg.etl_table_text_column
 
         if not target_table:
             raise LakehouseError("未指定目标表名。请在 config.yaml 的 etl.target.table 中配置。")
@@ -747,7 +747,7 @@ class LakehouseClient:
             pass
 
         # 读取源表 schema 推断主键列类型
-        source_table = self._config.etl_source_table
+        source_table = self._config.etl_table_name
         source_type_map: Dict[str, str] = {}
         if source_table:
             try:

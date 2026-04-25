@@ -412,8 +412,9 @@ class LakehouseClient:
         write_schema = StructType(struct_fields)
 
         # 构建数据行
-        from datetime import datetime, timezone
-        now_str = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        from datetime import datetime, timezone, timedelta
+        _tz_cst = timezone(timedelta(hours=8))
+        now_str = datetime.now(_tz_cst).strftime("%Y-%m-%dT%H:%M:%S+08:00")
 
         typed_rows = []
         for r in results:
@@ -647,8 +648,9 @@ class LakehouseClient:
         write_schema = StructType(struct_fields)
 
         # 构建数据行
-        from datetime import datetime, timezone
-        now_str = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        from datetime import datetime, timezone, timedelta
+        _tz_cst = timezone(timedelta(hours=8))
+        now_str = datetime.now(_tz_cst).strftime("%Y-%m-%dT%H:%M:%S+08:00")
 
         # 构建 source_text 查找表（标准化 key → 原始文本）
         source_text_map: Dict[str, str] = {}

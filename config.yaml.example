@@ -31,12 +31,13 @@ clickzetta:
   service: cn-shanghai-alicloud.api.clickzetta.com
   instance: your_instance
   workspace: your_workspace
-  schema: public
+  schema: public                       # 默认 schema，target_table 不含 schema 时自动补上
   vcluster: default_ap
   sdk_job_timeout: 300
 
 # ── ETL 流水线配置 ──────────────────────────────────────────
 # 支持双数据源：table 和 volume 可以各自独立启用
+# 每个 source 有独立的 target_table，schema 不同不能混写
 etl:
   sources:
     # ── Table 数据源（结构化文本） ──
@@ -48,21 +49,24 @@ etl:
       filter: ""                       # WHERE 过滤条件（留空不过滤）
       batch_size: 0                    # 每批最大行数（0 = 不限制）
       system_prompt: "You are a helpful assistant."
+      target_table: "schema.table_results"  # 目标表（不含 schema 时自动补 clickzetta.schema）
 
     # ── Volume 数据源（非结构化文件：图片/视频/音频） ──
     volume:
       enabled: false                   # true = 启用, false = 禁用
-      volume_name: "my_oss_volume"     # Volume 名称，或 "USER VOLUME"
+      volume_type: "user"              # external | user | table
+      volume_name: ""                  # external/table 时必填，user 时留空
       file_types: [".jpg", ".png"]     # 文件扩展名过滤（空 = 全部文件）
       subdirectory: ""                 # 路径前缀过滤（空 = 根目录）
       url_expiration: 86400            # 预签名 URL 有效期（秒），默认 24 小时
       batch_size: 0                    # 每批最大文件数（0 = 不限制）
       system_prompt: "You are an image analysis expert."
       user_prompt: "Describe this image in detail"
+      target_table: "schema.volume_results"  # 目标表（不含 schema 时自动补 clickzetta.schema）
 
-  # ── 目标表 ──
+  # ── 全局目标表配置（仅当 source 未指定 target_table 时使用） ──
   target:
-    table: "schema.target_table"       # 目标表名
+    table: ""                          # 全局默认目标表（建议在 source 级别配置）
     result_column: "ai_result"         # 推理结果列名
     write_mode: "append"               # append | overwrite
     # 目标表 schema 按数据源类型自动适配，缺失列自动创建

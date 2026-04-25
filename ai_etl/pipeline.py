@@ -198,6 +198,7 @@ class AIETLPipeline:
     ) -> Dict[str, Any]:
         """Table ETL 流程。"""
         cfg = self._config
+        target_table = target_table or cfg.resolve_table_target()
         key_columns = key_columns or cfg.etl_table_key_columns
         text_column = text_column or cfg.etl_table_text_column
         provider_name = provider_name or cfg.provider_name
@@ -326,6 +327,7 @@ class AIETLPipeline:
     ) -> Dict[str, Any]:
         """Volume ETL 流程：发现文件 → 生成 URL → 构建 JSONL → 提交 → 写回。"""
         cfg = self._config
+        target_table = target_table or cfg.resolve_volume_target()
         provider_name = provider_name or cfg.provider_name
 
         # 生成 Volume SQL 引用
@@ -358,7 +360,7 @@ class AIETLPipeline:
             volume_sql_ref=volume_sql_ref,
             file_types=file_types or cfg.etl_volume_file_types,
             subdirectory=cfg.etl_volume_subdirectory,
-            target_table=target_table or cfg.etl_target_table,
+            target_table=target_table,
             batch_size=cfg.etl_volume_batch_size,
         )
 
@@ -482,6 +484,7 @@ class AIETLPipeline:
         """从 Step 3 恢复：查询已有 batch 的结果并写入目标表。
 
         用于 pipeline 中断后恢复，无需重新读取源表和提交推理。
+        自动检测 last_batch.json 判断是 table 还是 volume 模式。
         """
         cfg = self._config
         provider_name = provider_name or cfg.provider_name
@@ -501,17 +504,46 @@ class AIETLPipeline:
             logger.warning("没有成功的推理结果")
             return self._make_stats(0, provider.name, "")
 
-        written = self._lakehouse.write_results(
-            results,
-            provider_name=provider.name,
-            include_metadata=True,
-        )
+        # 读取 last_batch.json 判断原始任务类型
+        batch_state = self._load_batch_state(batch_id)
+        source_type = batch_state.get("source_type", "table")
+
+        if source_type == "volume":
+            volume_display = batch_state.get("volume_ref", cfg.etl_volume_name or cfg.etl_volume_type)
+            written = self._lakehouse.write_volume_results(
+                results,
+                volume_name=volume_display,
+                file_metadata={},  # resume 时无文件元数据，file_size 会为 0
+                provider_name=provider.name,
+                batch_id=batch_id,
+            )
+        else:
+            written = self._lakehouse.write_results(
+                results,
+                provider_name=provider.name,
+                batch_id=batch_id,
+                include_metadata=True,
+            )
 
         return self._make_stats(
             0, provider.name, "",
             batch_id=batch_id, batch_status="completed",
             success_count=len(results), written_rows=written,
         )
+
+    def _load_batch_state(self, batch_id: str) -> Dict[str, Any]:
+        """从 output/last_batch.json 加载批次状态信息。"""
+        state_file = Path(self._config.output_dir) / "last_batch.json"
+        if not state_file.exists():
+            return {}
+        try:
+            state = json.loads(state_file.read_text(encoding="utf-8"))
+            # 只返回匹配当前 batch_id 的状态
+            if state.get("batch_id") == batch_id:
+                return state
+        except Exception:
+            pass
+        return {}
 
     @staticmethod
     def _make_stats(

@@ -390,6 +390,11 @@ class Config:
         return self._get_nested("etl", "sources", "table", "system_prompt", default="You are a helpful assistant.")
 
     @property
+    def etl_table_target_table(self) -> str:
+        """Table 数据源的独立目标表（优先于全局 etl.target.table）。"""
+        return self._get_nested("etl", "sources", "table", "target_table", default="")
+
+    @property
     def etl_volume_enabled(self) -> bool:
         val = self._get_nested("etl", "sources", "volume", "enabled", default=False)
         if isinstance(val, bool):
@@ -455,6 +460,11 @@ class Config:
     @property
     def etl_volume_user_prompt(self) -> str:
         return self._get_nested("etl", "sources", "volume", "user_prompt", default="Describe this file")
+
+    @property
+    def etl_volume_target_table(self) -> str:
+        """Volume 数据源的独立目标表（优先于全局 etl.target.table）。"""
+        return self._get_nested("etl", "sources", "volume", "target_table", default="")
 
     # ── Backward compat: old flat source properties ───────────
     # These read from the new nested path but fall back to old flat path
@@ -540,3 +550,27 @@ class Config:
     @property
     def etl_target_write_mode(self) -> str:
         return self._get_nested("etl", "target", "write_mode", default="append")
+
+    # ── Target Table Resolution ───────────────────────────────
+
+    def _qualify_table_name(self, table: str) -> str:
+        """如果表名不含 schema 前缀，自动加上 clickzetta.schema。
+
+        'my_table' → 'mcp_demo.my_table'
+        'other_schema.my_table' → 'other_schema.my_table' (不变)
+        """
+        if not table:
+            return table
+        if "." not in table:
+            return f"{self.cz_schema}.{table}"
+        return table
+
+    def resolve_table_target(self) -> str:
+        """Table 数据源的目标表：source 级 > 全局 > 空。自动补 schema。"""
+        raw = self.etl_table_target_table or self.etl_target_table
+        return self._qualify_table_name(raw)
+
+    def resolve_volume_target(self) -> str:
+        """Volume 数据源的目标表：source 级 > 全局 > 空。自动补 schema。"""
+        raw = self.etl_volume_target_table or self.etl_target_table
+        return self._qualify_table_name(raw)

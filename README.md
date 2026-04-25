@@ -22,36 +22,79 @@ Supports multiple providers (DashScope / ZhipuAI) and multiple modalities (text,
 ## Architecture
 
 ```
-+------------------------------------------------------------------------+
-|                    Multimodal AI ETL Pipeline                          |
-|                                                                        |
-|  +-----------------+                        +------------------------+ |
-|  | Source: Table    |                       | Target Table           | |
-|  | SELECT key+text  |                       | - key / file_path      | |
-|  +-----------------+                        | - ai_result            | |
-|  +-----------------+                        | - 12 metadata cols     | |
-|  | Source: Volume   |                       +------------------------+ |
-|  | DIRECTORY()      |--------+                         ^               |
-|  | PRESIGNED_URL()  |        |                         |               |
-|  +-----------------+        v                          |               |
-|                      +----------------+                |               |
-|                      | Build JSONL    |                |               |
-|                      | text/multimodal|                |               |
-|                      +-------+--------+                |               |
-|                              v                         |               |
-|                   +----------------------+             |               |
-|                   | LLM Batch API        |             |               |
-|                   | DashScope: Qwen/VL   |             |               |
-|                   | ZhipuAI:   GLM/4V    |             |               |
-|                   +----------+-----------+             |               |
-|                              v                         |               |
-|                      +----------------+                |               |
-|                      | Write results  +----------------+               |
-|                      | + metadata     |                                |
-|                      +----------------+                                |
-|                                                                        |
-|  Config:  .env (credentials)  +  config.yaml (parameters)              |
-+------------------------------------------------------------------------+
++=============================================================================+
+|                      Multimodal AI ETL Pipeline                             |
+|                                                                             |
+|  EXTRACT                                                                    |
+|  ~~~~~~~                                                                    |
+|  +----------------------------------+ +----------------------------------+  |
+|  | Source A: Table                   | | Source B: Volume                |  |
+|  |                                   | |                                 |  |
+|  | SELECT key, text                  | | DIRECTORY(VOLUME)               |  |
+|  |   FROM source_table               | |   -> file discovery             |  |
+|  |   WHERE filter                    | |   -> extension filter           |  |
+|  |   LIMIT batch_size                | |   -> incremental filter         |  |
+|  +----------------+------------------+ |      (skip processed)           |  |
+|                   |                    | GET_PRESIGNED_URL()             |  |
+|                   |                    |   -> HTTP-accessible URLs       |  |
+|                   |                    +----------------+-----------------+ |
+|                   |                                     |                   |
+|  TRANSFORM        |                                     |                   |
+|  ~~~~~~~~~        v                                     v                   |
+|  +----------------------------------+ +----------------------------------+  |
+|  | Build Text JSONL                  | | Build Multimodal JSONL          |  |
+|  |                                   | |                                 |  |
+|  | custom_id: encode(key)            | | custom_id: encode(path)         |  |
+|  | messages:                         | | messages:                       |  |
+|  |   system: prompt                  | |   system: prompt                |  |
+|  |   user:   text_value              | |   user:   [image_url /          |  |
+|  |                                   | |     video_url / audio, text     |  |
+|  +----------------+------------------+ +----------------+-----------------+ |
+|                   |                                     |                   |
+|                   +------------------+------------------+                   |
+|                                      |                                      |
+|                                      v                                      |
+|               +----------------------------------------------+              |
+|               | Upload JSONL + Create Batch                   |             |
+|               | (both sources submitted in parallel)          |             |
+|               +----------------------+-----------------------+              |
+|                                      |                                      |
+|                                      v                                      |
+|               +----------------------------------------------+              |
+|               | LLM Batch Inference (server-side)             |             |
+|               |                                               |             |
+|               | Provider:  DashScope / ZhipuAI                |             |
+|               | Model:     qwen / glm / deepseek              |             |
+|               | Cost:      50% of realtime                    |             |
+|               | Scale:     up to 50K requests per file        |             |
+|               +----------------------+-----------------------+              |
+|                                      |                                      |
+|               +----------------------------------------------+              |
+|               | Unified Polling Loop                          |             |
+|               | (parallel wait for all batch jobs)            |             |
+|               +----------------------+-----------------------+              |
+|                                      |                                      |
+|  LOAD                                v                                      |
+|  ~~~~             +------------------+------------------+                   |
+|                   |                                     |                   |
+|                   v                                     v                   |
+|  +----------------------------------+ +----------------------------------+  |
+|  | Table Target                      | | Volume Target                   |  |
+|  |                                   | |                                 |  |
+|  | key_columns  (from source)        | | file_path, volume_name          |  |
+|  | ai_result                         | | file_size, ai_result            |  |
+|  | + 12 metadata columns:            | | + 12 metadata columns           |  |
+|  |   model, provider, tokens         | |   model, provider, tokens       |  |
+|  |   batch_id, processed_at          | |   batch_id, processed_at        |  |
+|  |   status, finish_reason           | |   status, finish_reason         |  |
+|  |   source_text, raw_response       | |   source_text, raw_response     |  |
+|  +----------------------------------+ +----------------------------------+  |
+|                                                                             |
+|  CONFIG                                                                     |
+|  ~~~~~~                                                                     |
+|  .env          API keys, Lakehouse password (secrets)                       |
+|  config.yaml   Provider, sources, targets, prompts (parameters)             |
++=============================================================================+
 ```
 
 ## Quick Start

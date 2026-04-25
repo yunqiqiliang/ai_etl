@@ -201,6 +201,61 @@ Expected output:
 > **Batch inference runs server-side and typically takes 10–60 minutes.**
 > You can safely Ctrl+C and later resume: `python -m ai_etl resume <batch_id>`
 
+### Step 5: Verify results
+
+After the pipeline completes, verify the results in your Lakehouse:
+
+```sql
+-- In Lakehouse Studio or any SQL client
+-- Check row count
+SELECT COUNT(*) FROM your_schema.your_results;
+
+-- View results with metadata
+SELECT key_column, ai_result, model, total_tokens, processed_at
+FROM your_schema.your_results
+LIMIT 5;
+```
+
+Expected result:
+
+| key_column | ai_result | model | total_tokens | processed_at |
+|---|---|---|---|---|
+| 1001 | This product features... | qwen3.5-flash | 156 | 2026-04-25T12:30:00+08:00 |
+| 1002 | A premium quality... | qwen3.5-flash | 142 | 2026-04-25T12:30:00+08:00 |
+
+You can also check from Python:
+
+```python
+from ai_etl.config import Config
+from ai_etl.lakehouse import LakehouseClient
+
+cfg = Config()
+lh = LakehouseClient(config=cfg)
+rows = lh.session.sql("SELECT * FROM your_schema.your_results LIMIT 5").collect()
+for r in rows:
+    print(r)
+lh.close()
+```
+
+**Verify incremental processing** (Volume mode only) — run the pipeline again, it should skip already-processed files:
+
+```bash
+python -m ai_etl run
+# Expected for Volume: "增量过滤: 3 → 0 个新文件" / "没有新文件需要处理"
+# Note: Table mode re-processes all rows each run (use filter/batch_size to control scope)
+```
+
+### Troubleshooting
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| `未找到 dashscope 的 API Key` | `.env` not loaded | Check `.env` is in project root, key name matches exactly |
+| `缺少 ClickZetta 连接参数` | Missing credentials | Check `CLICKZETTA_USERNAME` / `CLICKZETTA_PASSWORD` in `.env` |
+| `未启用任何数据源` | No source enabled | Set `etl.sources.table.enabled: true` in `config.yaml` |
+| `batch 任务失败` | Invalid model or quota | Check model name in provider docs, verify API key has batch access |
+| Stuck at `in_progress` for hours | Normal for large batches | DashScope batch can take up to 24h; check status with `python -m ai_etl status <batch_id>` |
+| `请安装 clickzetta-zettapark-python` | Missing dependency | Run `pip install -e .` again |
+
 ## Two Source Modes
 
 ### Table Mode (structured text)

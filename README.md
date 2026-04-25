@@ -104,6 +104,10 @@ Supports multiple providers (DashScope / ZhipuAI) and multiple modalities (text,
 - **LLM API Key** — at least one of:
   - [DashScope](https://help.aliyun.com/zh/model-studio/get-api-key) (recommended, supports all modalities)
   - [ZhipuAI](https://open.bigmodel.cn/) (install extra: `pip install ai-etl[zhipuai]`)
+- **Source data ready in Lakehouse** — depending on which mode you use:
+  - **Table mode**: a table with a key column and a text column (e.g. product reviews, support tickets)
+  - **Volume mode**: files uploaded to a Lakehouse Volume (images, video, or audio). See [Volume docs](https://www.yunqi.tech/documents/datalake_volume) for how to create Volumes and upload files via `PUT` command or Zettapark SDK
+- **Network access** — the machine running this pipeline needs outbound HTTPS access to both the Lakehouse API and the LLM provider API
 
 ## Quick Start
 

@@ -257,6 +257,8 @@ class AIETLPipeline:
             "batch_id": batch_id,
             "provider": provider.name,
             "model": resolved_model,
+            "source_type": "table",
+            "target_table": target_table,
             "source_rows": len(rows),
         }, ensure_ascii=False, indent=2))
 
@@ -421,6 +423,7 @@ class AIETLPipeline:
             "provider": provider.name,
             "model": resolved_model,
             "source_type": "volume",
+            "target_table": target_table,
             "volume_ref": volume_sql_ref,
             "discovered_files": len(files),
             "files_with_urls": len(files_with_urls),
@@ -507,19 +510,24 @@ class AIETLPipeline:
         # 读取 last_batch.json 判断原始任务类型
         batch_state = self._load_batch_state(batch_id)
         source_type = batch_state.get("source_type", "table")
+        saved_target = batch_state.get("target_table", "")
 
         if source_type == "volume":
+            target_table = saved_target or cfg.resolve_volume_target()
             volume_display = batch_state.get("volume_ref", cfg.etl_volume_name or cfg.etl_volume_type)
             written = self._lakehouse.write_volume_results(
                 results,
                 volume_name=volume_display,
                 file_metadata={},  # resume 时无文件元数据，file_size 会为 0
+                target_table=target_table,
                 provider_name=provider.name,
                 batch_id=batch_id,
             )
         else:
+            target_table = saved_target or cfg.resolve_table_target()
             written = self._lakehouse.write_results(
                 results,
+                target_table=target_table,
                 provider_name=provider.name,
                 batch_id=batch_id,
                 include_metadata=True,

@@ -77,27 +77,32 @@ python -m ai_etl run --source-type volume      # volume mode
 
 ```yaml
 etl:
-  source:
-    source_type: "table"
-    table: "schema.reviews"
-    key_columns: "review_id"
-    text_column: "review_text"
-    filter: "status = 'pending'"
-    system_prompt: "Classify sentiment: positive/negative/neutral"
+  sources:
+    table:
+      enabled: true
+      table: "schema.reviews"
+      key_columns: "review_id"
+      text_column: "review_text"
+      filter: "status = 'pending'"
+      system_prompt: "Classify sentiment: positive/negative/neutral"
+      target_table: "schema.review_results"
 ```
 
 ### Volume Mode (images, video, audio)
 
 ```yaml
 etl:
-  source:
-    source_type: "volume"
-    volume_name: "my_oss_volume"       # or "USER VOLUME"
-    file_types: [".jpg", ".png"]
-    subdirectory: "products/2024/"
-    url_expiration: 86400              # 24h presigned URL
-    system_prompt: "You are an image analysis expert."
-    user_prompt: "Describe this product image in 50 words."
+  sources:
+    volume:
+      enabled: true
+      volume_type: "user"              # external | user | table
+      volume_name: ""                  # external/table: required; user: leave empty
+      file_types: [".jpg", ".png"]
+      subdirectory: "products/2024/"
+      url_expiration: 86400            # 24h presigned URL
+      system_prompt: "You are an image analysis expert."
+      user_prompt: "Describe this product image in 50 words."
+      target_table: "schema.volume_results"
 ```
 
 Volume mode features:

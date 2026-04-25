@@ -11,7 +11,7 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from ai_etl.config import Config
 from ai_etl.lakehouse import LakehouseClient
@@ -81,6 +81,111 @@ class AIETLPipeline:
 
     def run(
         self,
+        source_type: Optional[str] = None,
+        source_table: Optional[str] = None,
+        key_columns: Optional[str] = None,
+        text_column: Optional[str] = None,
+        filter_expr: Optional[str] = None,
+        target_table: Optional[str] = None,
+        result_column: Optional[str] = None,
+        model: Optional[str] = None,
+        system_prompt: Optional[str] = None,
+        provider_name: Optional[str] = None,
+        volume_name: Optional[str] = None,
+        file_types: Optional[list] = None,
+    ) -> Dict[str, Any]:
+        """执行 AI ETL 流水线。
+
+        支持三种模式：
+        1. 显式指定 source_type → 只运行该类型
+        2. config 中 etl.sources.table.enabled / etl.sources.volume.enabled → 运行启用的
+        3. 两个都启用 → 依次运行 table 和 volume，合并统计
+        """
+        cfg = self._config
+
+        # 如果显式指定了 source_type，只运行该类型
+        if source_type:
+            if source_type == "volume":
+                return self._run_volume(
+                    volume_name=volume_name, file_types=file_types,
+                    target_table=target_table, result_column=result_column,
+                    model=model, system_prompt=system_prompt, provider_name=provider_name,
+                )
+            else:
+                return self._run_table(
+                    source_table=source_table, key_columns=key_columns,
+                    text_column=text_column, filter_expr=filter_expr,
+                    target_table=target_table, result_column=result_column,
+                    model=model, system_prompt=system_prompt, provider_name=provider_name,
+                )
+
+        # 检查 config 中启用了哪些 source
+        table_enabled = cfg.etl_table_enabled
+        volume_enabled = cfg.etl_volume_enabled
+
+        # 如果都没启用，回退到旧的 source_type 字段
+        if not table_enabled and not volume_enabled:
+            old_type = cfg.etl_source_type
+            if old_type == "volume":
+                volume_enabled = True
+            else:
+                table_enabled = True
+
+        all_stats: List[Dict[str, Any]] = []
+
+        if table_enabled:
+            logger.info("=" * 60)
+            logger.info("运行 Table 数据源")
+            logger.info("=" * 60)
+            stats = self._run_table(
+                source_table=source_table, key_columns=key_columns,
+                text_column=text_column, filter_expr=filter_expr,
+                target_table=target_table, result_column=result_column,
+                model=model, system_prompt=system_prompt, provider_name=provider_name,
+            )
+            all_stats.append({"source": "table", **stats})
+
+        if volume_enabled:
+            logger.info("=" * 60)
+            logger.info("运行 Volume 数据源")
+            logger.info("=" * 60)
+            stats = self._run_volume(
+                volume_name=volume_name, file_types=file_types,
+                target_table=target_table, result_column=result_column,
+                model=model, system_prompt=system_prompt, provider_name=provider_name,
+            )
+            all_stats.append({"source": "volume", **stats})
+
+        # 如果只运行了一个，直接返回
+        if len(all_stats) == 1:
+            return all_stats[0]
+
+        # 合并统计
+        total_source = sum(s.get("source_rows", 0) for s in all_stats)
+        total_success = sum(s.get("success_count", 0) for s in all_stats)
+        total_errors = sum(s.get("error_count", 0) for s in all_stats)
+        total_written = sum(s.get("written_rows", 0) for s in all_stats)
+
+        logger.info("=" * 60)
+        logger.info("双数据源 ETL 完成: %d 源数据 → %d 成功 / %d 失败 → %d 写入",
+                     total_source, total_success, total_errors, total_written)
+        logger.info("=" * 60)
+
+        return {
+            "sources": all_stats,
+            "source_rows": total_source,
+            "success_count": total_success,
+            "error_count": total_errors,
+            "written_rows": total_written,
+            "provider": all_stats[0].get("provider"),
+            "model": None,
+            "batch_id": None,
+            "batch_status": "completed",
+            "output_file": None,
+        }
+
+    def _run_table(
+        self,
         source_table: Optional[str] = None,
         key_columns: Optional[str] = None,
         text_column: Optional[str] = None,
@@ -91,16 +196,15 @@ class AIETLPipeline:
         system_prompt: Optional[str] = None,
         provider_name: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """执行完整的 AI ETL 流水线。所有参数可选，未指定时从 config.yaml 读取。"""
+        """Table ETL 流程。"""
         cfg = self._config
-        key_columns = key_columns or cfg.etl_source_key_columns
-        text_column = text_column or cfg.etl_source_text_column
+        key_columns = key_columns or cfg.etl_table_key_columns
+        text_column = text_column or cfg.etl_table_text_column
         provider_name = provider_name or cfg.provider_name
 
         provider = self._resolve_provider(provider_name)
-        resolved_model, resolved_prompt = self._resolve_model_and_prompt(
-            provider.name, model, system_prompt
-        )
+        resolved_model = model or cfg.resolve_model("table")
+        resolved_prompt = system_prompt or cfg.etl_table_system_prompt
         endpoint = provider.build_jsonl_endpoint()
 
         logger.info("=" * 60)
@@ -110,10 +214,11 @@ class AIETLPipeline:
         # ── Step 1: 从 Lakehouse 读取源数据 ──────────────────
         logger.info("[Step 1/4] 从 Lakehouse 读取源数据...")
         rows = self._lakehouse.read_source(
-            table=source_table,
+            table=source_table or cfg.etl_table_name,
             key_columns=key_columns,
             text_column=text_column,
-            filter_expr=filter_expr,
+            filter_expr=filter_expr or cfg.etl_table_filter,
+            batch_size=cfg.etl_table_batch_size,
         )
         logger.info("读取到 %d 行数据", len(rows))
 
@@ -135,7 +240,7 @@ class AIETLPipeline:
         file_id = provider.upload_file(jsonl_path)
         batch_id = provider.create_batch(
             file_id,
-            task_name=f"ai-etl-{source_table or cfg.etl_source_table}",
+            task_name=f"ai-etl-{source_table or cfg.etl_table_name}",
         )
 
         # ── Step 3: 等待完成并下载结果 ───────────────────────
@@ -204,6 +309,170 @@ class AIETLPipeline:
 
         return self._make_stats(
             len(rows), provider.name, resolved_model,
+            batch_id=batch_id, batch_status=final_status,
+            success_count=success_count, error_count=error_count,
+            written_rows=written, output_file=str(output_file),
+        )
+
+    def _run_volume(
+        self,
+        volume_name: Optional[str] = None,
+        file_types: Optional[list] = None,
+        target_table: Optional[str] = None,
+        result_column: Optional[str] = None,
+        model: Optional[str] = None,
+        system_prompt: Optional[str] = None,
+        provider_name: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Volume ETL 流程：发现文件 → 生成 URL → 构建 JSONL → 提交 → 写回。"""
+        cfg = self._config
+        provider_name = provider_name or cfg.provider_name
+
+        # 生成 Volume SQL 引用
+        try:
+            volume_sql_ref = cfg.get_volume_sql_ref()
+        except ValueError as e:
+            raise RuntimeError(str(e))
+
+        # 用于显示和元数据的 volume 标识
+        volume_display = cfg.etl_volume_name or cfg.etl_volume_type
+
+        if not volume_sql_ref:
+            raise RuntimeError(
+                "Volume 配置不完整。请在 config.yaml 的 etl.sources.volume 中配置 volume_type 和 volume_name。"
+            )
+
+        provider = self._resolve_provider(provider_name)
+        resolved_model = model or cfg.resolve_model("volume")
+        resolved_prompt = system_prompt or cfg.etl_volume_system_prompt
+        endpoint = provider.build_jsonl_endpoint()
+
+        logger.info("=" * 60)
+        logger.info("AI ETL Volume 流水线启动 (provider=%s, model=%s, volume=%s)",
+                     provider.name, resolved_model, volume_sql_ref)
+        logger.info("=" * 60)
+
+        # Step 1: 发现新文件
+        logger.info("[Step 1/5] 发现 Volume 中的新文件...")
+        files = self._lakehouse.discover_volume_files(
+            volume_sql_ref=volume_sql_ref,
+            file_types=file_types or cfg.etl_volume_file_types,
+            subdirectory=cfg.etl_volume_subdirectory,
+            target_table=target_table or cfg.etl_target_table,
+            batch_size=cfg.etl_volume_batch_size,
+        )
+
+        if not files:
+            logger.info("没有新文件需要处理")
+            return self._make_stats(0, provider.name, resolved_model)
+
+        logger.info("发现 %d 个新文件", len(files))
+
+        # Step 2: 生成预签名 URL
+        logger.info("[Step 2/5] 生成预签名 URL...")
+        url_expiration = cfg.etl_volume_url_expiration
+        files_with_urls = self._lakehouse.generate_presigned_urls(
+            files, volume_sql_ref=volume_sql_ref, expiration=url_expiration,
+        )
+
+        if not files_with_urls:
+            logger.warning("所有文件的预签名 URL 生成失败")
+            return self._make_stats(len(files), provider.name, resolved_model)
+
+        # URL 过期警告
+        try:
+            from ai_etl.providers.base import _parse_completion_window_hours
+            cw_hours = _parse_completion_window_hours(cfg.completion_window)
+            if url_expiration < cw_hours * 3600:
+                logger.warning(
+                    "预签名 URL 有效期 (%ds = %.1fh) 短于 completion_window (%s)，"
+                    "URL 可能在批量任务完成前过期",
+                    url_expiration, url_expiration / 3600, cfg.completion_window,
+                )
+        except Exception:
+            pass
+
+        # Step 3: 构建多模态 JSONL
+        logger.info("[Step 3/5] 构建多模态 JSONL...")
+        jsonl_path = self._lakehouse.build_multimodal_jsonl(
+            files_with_urls,
+            model=resolved_model,
+            user_prompt=cfg.etl_volume_user_prompt,
+            system_prompt=resolved_prompt,
+            provider_name=provider.name,
+            endpoint=endpoint,
+        )
+
+        # Step 4: 提交并等待
+        logger.info("[Step 4/5] 提交批量推理...")
+        file_id = provider.upload_file(jsonl_path)
+        batch_id = provider.create_batch(
+            file_id, task_name=f"ai-etl-volume-{volume_display}",
+        )
+
+        # 持久化状态
+        output_dir = Path(cfg.output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        state_file = output_dir / "last_batch.json"
+        state_file.write_text(json.dumps({
+            "batch_id": batch_id,
+            "provider": provider.name,
+            "model": resolved_model,
+            "source_type": "volume",
+            "volume_ref": volume_sql_ref,
+            "discovered_files": len(files),
+            "files_with_urls": len(files_with_urls),
+        }, ensure_ascii=False, indent=2))
+
+        logger.info("等待批量推理完成...")
+        final_status = provider.wait_for_completion(batch_id)
+
+        result_text = provider.download_results(batch_id)
+        results = BatchProvider.parse_results(result_text) if result_text else []
+
+        output_file = output_dir / cfg.result_file
+        if result_text:
+            output_file.write_text(result_text, encoding="utf-8")
+
+        error_text = provider.download_errors(batch_id)
+        errors = BatchProvider.parse_errors(error_text) if error_text else []
+        if error_text:
+            (output_dir / cfg.error_file).write_text(error_text, encoding="utf-8")
+
+        success_count = len(results)
+        error_count = len(errors)
+        logger.info("推理完成: %d 成功, %d 失败", success_count, error_count)
+
+        if jsonl_path.exists():
+            jsonl_path.unlink()
+
+        # Step 5: 写入目标表
+        logger.info("[Step 5/5] 写入目标表...")
+        if not results:
+            logger.warning("没有成功的推理结果，跳过写入")
+            written = 0
+        else:
+            file_metadata = {f["relative_path"]: f for f in files_with_urls}
+            written = self._lakehouse.write_volume_results(
+                results,
+                volume_name=volume_display,
+                file_metadata=file_metadata,
+                target_table=target_table,
+                result_column=result_column,
+                provider_name=provider.name,
+                batch_id=batch_id,
+            )
+
+        logger.info("=" * 60)
+        logger.info("AI ETL Volume 流水线完成")
+        logger.info(
+            "  文件: %d 发现 / %d URL / %d 成功 / %d 失败 → 写入: %d 行",
+            len(files), len(files_with_urls), success_count, error_count, written,
+        )
+        logger.info("=" * 60)
+
+        return self._make_stats(
+            len(files), provider.name, resolved_model,
             batch_id=batch_id, batch_status=final_status,
             success_count=success_count, error_count=error_count,
             written_rows=written, output_file=str(output_file),

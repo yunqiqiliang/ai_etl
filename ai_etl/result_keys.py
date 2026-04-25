@@ -26,9 +26,23 @@ RAW = "raw"
 BATCH_ID = "batch_id"
 PROCESSED_AT = "processed_at"
 SOURCE_TEXT = "source_text"
-FINISH_REASON = "finish_reason"       # stop / length / content_filter 等
-RESPONSE_ID = "response_id"           # 服务端返回的请求级唯一 ID
-RAW_RESPONSE = "raw_response"         # 完整 response body JSON（兜底，不丢信息）
+FINISH_REASON = "finish_reason"
+RESPONSE_ID = "response_id"
+RAW_RESPONSE = "raw_response"
+
+# ── Volume 数据源特有的列 ─────────────────────────────────────
+
+FILE_PATH = "file_path"
+VOLUME_NAME = "volume_name"
+FILE_SIZE = "file_size"
+
+VOLUME_COLUMNS = [FILE_PATH, VOLUME_NAME, FILE_SIZE]
+
+VOLUME_SQL_TYPES = {
+    FILE_PATH: "STRING",
+    VOLUME_NAME: "STRING",
+    FILE_SIZE: "BIGINT",
+}
 
 # 元数据列列表（写入目标表时按此顺序追加）
 METADATA_COLUMNS = [

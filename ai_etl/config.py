@@ -356,25 +356,178 @@ class Config:
 
     # ── ETL 流水线 ────────────────────────────────────────────
 
+    # ── ETL Sources (dual source: table + volume) ─────────────
+
+    @property
+    def etl_table_enabled(self) -> bool:
+        val = self._get_nested("etl", "sources", "table", "enabled", default=False)
+        if isinstance(val, bool):
+            return val
+        return str(val).lower() in ("true", "yes", "1")
+
+    @property
+    def etl_table_name(self) -> str:
+        return self._get_nested("etl", "sources", "table", "table", default="")
+
+    @property
+    def etl_table_key_columns(self) -> str:
+        return self._get_nested("etl", "sources", "table", "key_columns", default="id")
+
+    @property
+    def etl_table_text_column(self) -> str:
+        return self._get_nested("etl", "sources", "table", "text_column", default="content")
+
+    @property
+    def etl_table_filter(self) -> Optional[str]:
+        return self._get_nested("etl", "sources", "table", "filter", default=None)
+
+    @property
+    def etl_table_batch_size(self) -> int:
+        return int(self._get_nested("etl", "sources", "table", "batch_size", default=0))
+
+    @property
+    def etl_table_system_prompt(self) -> str:
+        return self._get_nested("etl", "sources", "table", "system_prompt", default="You are a helpful assistant.")
+
+    @property
+    def etl_volume_enabled(self) -> bool:
+        val = self._get_nested("etl", "sources", "volume", "enabled", default=False)
+        if isinstance(val, bool):
+            return val
+        return str(val).lower() in ("true", "yes", "1")
+
+    @property
+    def etl_volume_type(self) -> str:
+        """Volume 类型: 'external' | 'user' | 'table'."""
+        return self._get_nested("etl", "sources", "volume", "volume_type", default="external")
+
+    @property
+    def etl_volume_name(self) -> str:
+        """Volume 名称（external/table 类型必填，user 类型忽略）。"""
+        return self._get_nested("etl", "sources", "volume", "volume_name", default="")
+
+    def get_volume_sql_ref(self) -> str:
+        """根据 volume_type 生成 SQL 中的 Volume 引用。
+
+        Returns:
+            'VOLUME my_vol' | 'USER VOLUME' | 'TABLE VOLUME my_table'
+        """
+        vt = self.etl_volume_type
+        vn = self.etl_volume_name
+        if vt == "user":
+            return "USER VOLUME"
+        elif vt == "table":
+            if not vn:
+                raise ValueError("volume_type='table' 时必须指定 volume_name")
+            return f"TABLE VOLUME {vn}"
+        else:  # external
+            if not vn:
+                raise ValueError("volume_type='external' 时必须指定 volume_name")
+            return f"VOLUME {vn}"
+
+    @property
+    def etl_volume_file_types(self) -> list:
+        val = self._get_nested("etl", "sources", "volume", "file_types", default=None)
+        if val is None:
+            return []
+        if isinstance(val, str):
+            return [e.strip() for e in val.split(",") if e.strip()]
+        if isinstance(val, list):
+            return [str(e).strip() for e in val if str(e).strip()]
+        return []
+
+    @property
+    def etl_volume_subdirectory(self) -> str:
+        return self._get_nested("etl", "sources", "volume", "subdirectory", default="")
+
+    @property
+    def etl_volume_url_expiration(self) -> int:
+        return int(self._get_nested("etl", "sources", "volume", "url_expiration", default=86400))
+
+    @property
+    def etl_volume_batch_size(self) -> int:
+        return int(self._get_nested("etl", "sources", "volume", "batch_size", default=0))
+
+    @property
+    def etl_volume_system_prompt(self) -> str:
+        return self._get_nested("etl", "sources", "volume", "system_prompt", default="You are a helpful assistant.")
+
+    @property
+    def etl_volume_user_prompt(self) -> str:
+        return self._get_nested("etl", "sources", "volume", "user_prompt", default="Describe this file")
+
+    # ── Backward compat: old flat source properties ───────────
+    # These read from the new nested path but fall back to old flat path
+
+    @property
+    def etl_source_type(self) -> str:
+        """Deprecated: use etl_table_enabled / etl_volume_enabled instead."""
+        return self._get_nested("etl", "source", "source_type", default="table")
+
     @property
     def etl_source_table(self) -> str:
-        return self._get_nested("etl", "source", "table", default="")
+        return self.etl_table_name or self._get_nested("etl", "source", "table", default="")
 
     @property
     def etl_source_key_columns(self) -> str:
-        return self._get_nested("etl", "source", "key_columns", default="id")
+        return self.etl_table_key_columns
 
     @property
     def etl_source_text_column(self) -> str:
-        return self._get_nested("etl", "source", "text_column", default="content")
+        return self.etl_table_text_column
 
     @property
     def etl_source_filter(self) -> Optional[str]:
-        return self._get_nested("etl", "source", "filter", default=None)
+        return self.etl_table_filter
 
     @property
     def etl_source_batch_size(self) -> int:
-        return int(self._get_nested("etl", "source", "batch_size", default=0))
+        return self.etl_table_batch_size or int(self._get_nested("etl", "source", "batch_size", default=0))
+
+    @property
+    def etl_source_volume_name(self) -> str:
+        return self.etl_volume_name or self._get_nested("etl", "source", "volume_name", default="")
+
+    @property
+    def etl_source_file_types(self) -> list:
+        return self.etl_volume_file_types or []
+
+    @property
+    def etl_source_subdirectory(self) -> str:
+        return self.etl_volume_subdirectory
+
+    @property
+    def etl_source_url_expiration(self) -> int:
+        return self.etl_volume_url_expiration
+
+    @property
+    def etl_source_system_prompt(self) -> str:
+        return self._get_nested("etl", "sources", "volume", "system_prompt",
+                                default=self._get_nested("etl", "source", "system_prompt",
+                                                         default="You are a helpful assistant."))
+
+    @property
+    def etl_source_user_prompt(self) -> str:
+        return self.etl_volume_user_prompt
+
+    # ── Model Resolution ──────────────────────────────────────
+
+    @property
+    def multimodal_model(self) -> str:
+        """Current provider's multimodal model."""
+        p = self.provider_name
+        val = self._get(p, "multimodal_model")
+        if val:
+            return val
+        defaults = {"dashscope": "qwen-vl-plus", "zhipuai": "glm-4v-plus"}
+        return defaults.get(p, "")
+
+    def resolve_model(self, source_type: Optional[str] = None) -> str:
+        """Select model based on source_type: text model for table, multimodal for volume."""
+        st = source_type or self.etl_source_type
+        if st == "volume":
+            return self.multimodal_model
+        return self.model_name
 
     @property
     def etl_target_table(self) -> str:

@@ -28,6 +28,9 @@ def main():
     run_p.add_argument("--model", help="模型名称")
     run_p.add_argument("--source-table", help="源表名")
     run_p.add_argument("--target-table", help="目标表名")
+    run_p.add_argument("--source-type", choices=["table", "volume"], help="数据源类型")
+    run_p.add_argument("--volume-name", help="Volume 名称 (source-type=volume 时必需)")
+    run_p.add_argument("--file-types", help="文件扩展名过滤，逗号分隔 (如 .jpg,.png)")
 
     # resume
     resume_p = sub.add_parser("resume", help="恢复中断的任务")
@@ -51,11 +54,19 @@ def main():
         from ai_etl.pipeline import AIETLPipeline
         pipeline = AIETLPipeline()
         try:
+            # 解析 file_types
+            file_types = None
+            if hasattr(args, 'file_types') and args.file_types:
+                file_types = [e.strip() for e in args.file_types.split(",") if e.strip()]
+
             stats = pipeline.run(
+                source_type=args.source_type if hasattr(args, 'source_type') else None,
                 provider_name=args.provider,
                 model=args.model,
                 source_table=args.source_table,
                 target_table=args.target_table,
+                volume_name=args.volume_name if hasattr(args, 'volume_name') else None,
+                file_types=file_types,
             )
             print(f"\n完成: {stats['success_count']} 成功, {stats['written_rows']} 行写入")
         finally:

@@ -175,7 +175,15 @@ CLICKZETTA_PASSWORD=your_password
 cp config.yaml.example config.yaml
 ```
 
-Edit `config.yaml`. Here is a minimal working example for **table mode** (structured text):
+**Option A: Let AI generate the config for you** (recommended):
+
+```bash
+python -m ai_etl plan --table your_schema.your_table
+python -m ai_etl plan --table your_schema.your_table --hint "生成产品营销描述"
+# Copy the output config snippet into config.yaml
+```
+
+**Option B: Edit manually.** Here is a minimal working example for **table mode** (structured text):
 
 ```yaml
 provider: dashscope

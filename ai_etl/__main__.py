@@ -48,6 +48,7 @@ def main():
     plan_p.add_argument("--volume-type", choices=["user", "external", "table"], default="user", help="Volume 类型")
     plan_p.add_argument("--volume-name", help="Volume 名称 (external/table 类型必需)")
     plan_p.add_argument("--subdirectory", default="", help="Volume 子目录过滤")
+    plan_p.add_argument("--hint", default="", help="告诉 AI 你想做什么 (如 '提取情感倾向' '生成产品描述')")
 
     args = parser.parse_args()
 
@@ -107,7 +108,7 @@ def main():
 
         if args.table:
             print(f"\n🔍 分析表: {args.table}\n")
-            result = plan_table(args.table)
+            result = plan_table(args.table, hint=args.hint)
             print(format_plan_result(result, "table"))
             print("\n--- config.yaml 片段 ---\n")
             print(generate_config_snippet(result, "table"))
@@ -118,6 +119,7 @@ def main():
                 volume_type=args.volume_type,
                 volume_name=args.volume_name or "",
                 subdirectory=args.subdirectory,
+                hint=args.hint,
             )
             print(format_plan_result(result, "volume"))
             print("\n--- config.yaml 片段 ---\n")

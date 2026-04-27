@@ -1,300 +1,430 @@
 # 设计提案：将 LLM Batch 推理封装为云器 Lakehouse AI Function in SQL
 
-## 背景
+## 1. 背景
 
-### 现状
+### 1.1 现状
 
-云器 Lakehouse 已提供 `AI_COMPLETE` 和 `AI_EMBEDDING` 两个 SQL 标量函数，底层调用实时推理 API（同步请求-响应）。适用于交互式分析和小批量场景（百级行数）。
+云器 Lakehouse 已提供 `AI_COMPLETE` 和 `AI_EMBEDDING` 两个 SQL 标量函数，底层调用实时推理 API（同步请求-响应），适用于交互式分析和小批量场景。
 
 ```sql
--- 现有能力：实时推理，同步返回
 SELECT AI_COMPLETE('endpoint:qwen3max', '中国的首都在哪里?');
 ```
 
-### 问题
+### 1.2 问题
 
-当数据量达到万级以上时，实时 API 面临三个根本性限制：
+| 限制 | 实时 API | Batch API |
+|------|---------|-----------|
+| 成本 | 标准价 | **50% 折扣** |
+| 规模 | 百级（QPM/TPM 限制） | **万级**（5 万/文件） |
+| 容错 | 自行管理重试 | 服务端重试 + error 文件 |
+| 多模态 | 支持 | 支持 |
 
-| 限制 | 影响 |
-|------|------|
-| **成本** | 标准价格，无折扣 |
-| **并发** | QPM/TPM 限制，大表扫描会触发限流 |
-| **可靠性** | 单行失败不影响其他行，但引擎需要自行管理重试 |
+### 1.3 核心矛盾
 
-LLM Provider（DashScope、ZhipuAI 等）提供的 **Batch API** 可以解决这些问题：50% 成本、服务端自动调度、内置重试。但 Batch API 是异步的 — 提交后需要等待 **数十分钟到 24 小时** 才能获取结果。
+SQL 是同步的，Batch API 是异步的。Provider 承诺的 completion_window 通常是 **24 小时**。SQL 连接不能阻塞 24 小时。
 
-### 核心矛盾
+### 1.4 已验证的基础
 
-**SQL 是同步的，Batch API 是异步的。**
+[ai_etl 项目](https://github.com/yunqiqiliang/ai_etl) 已实现完整的 Batch 推理 ETL 流水线并通过端到端验证（DashScope + ZhipuAI，Table + Volume 双数据源并行，增量处理，中断恢复）。
 
-SQL 函数必须在一次调用内返回结果。但 Batch 任务的生命周期跨越小时甚至天（Provider 承诺的 completion_window 通常是 24 小时）。这两个模型无法在一个函数调用里统一。
+## 2. 首选方案：SQL 函数三件套
 
-### 已验证的基础
+### 2.1 设计理念
 
-本项目（[ai_etl](https://github.com/yunqiqiliang/ai_etl)）已实现完整的 Batch 推理 ETL 流水线，并通过端到端验证：
+将 Batch 任务的生命周期拆分为三个独立的 SQL 操作，每个操作都是秒级返回：
 
-- 双数据源（Table + Volume）并行提交
-- 统一轮询等待，先完成先写入
-- 增量处理（Table 跳过已处理 key，Volume 跳过已处理文件）
-- 结果 + 12 个元数据字段自动写回 Lakehouse
-- 中断恢复（resume）
+| 操作 | 函数 | 耗时 | 说明 |
+|------|------|------|------|
+| 提交 | `AI_BATCH_SUBMIT()` | 秒级 | 构建 JSONL → 上传 → 创建 batch → 返回 batch_id |
+| 查状态 | `AI_BATCH_STATUS()` | 秒级 | 查询 Provider API → 返回进度 |
+| 查结果 | 直接 `SELECT` 目标表 | 秒级 | 后台 worker 自动收割结果写入目标表 |
 
-## 设计约束
+用户不需要等待 batch 完成。提交后可以关闭连接，随时回来查状态，结果自动出现在目标表中。
 
-1. **Batch 任务耗时不可控** — Provider 承诺 24 小时内完成，实测 10-60 分钟，极端情况可能更长
-2. **SQL 连接不能阻塞 24 小时** — 连接超时、计算资源占用、用户体验均不可接受
-3. **结果必须写回 Lakehouse 表** — 不能只返回文件，要能被下游 SQL/BI/Dynamic Table 消费
-4. **需要支持多模态** — 不仅是文本，还有 Volume 中的图片/视频/音频
-5. **需要增量处理** — 重跑时不重复处理已有结果
+### 2.2 用户体验
 
-## 方案对比
-
-### 方案 A：SQL 函数三件套
-
-在 SQL 层新增三个函数，将 Batch 生命周期暴露给用户：
+#### 场景一：Table 模式（结构化文本）
 
 ```sql
--- ① 提交（秒级返回 batch_id）
+-- Step 1: 提交 batch（秒级返回）
 SELECT AI_BATCH_SUBMIT(
-    'endpoint:qwen3max',                          -- 模型
-    TABLE(SELECT id, text FROM products),          -- 源数据（表子查询）
-    key_column    => 'id',
-    text_column   => 'text',
-    target_table  => 'product_results',
-    system_prompt => '写一段50字营销描述',
-    temperature   => 0.7
+    model         => 'endpoint:qwen3max',
+    source        => TABLE(SELECT product_id, product_name FROM products WHERE status = 'pending'),
+    key_column    => 'product_id',
+    text_column   => 'product_name',
+    target_table  => 'product_ai_results',
+    system_prompt => '为该产品写一段50字以内的营销描述',
+    temperature   => 0.7,
+    enable_thinking => false
 ) AS batch_id;
--- 返回: 'batch_abc123-xxxx-xxxx'
+-- 返回: 'batch_abc123-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
 
--- ② 查状态（随时查，秒级返回）
-SELECT * FROM TABLE(AI_BATCH_STATUS('batch_abc123-xxxx-xxxx'));
--- 返回:
--- | batch_id | status      | completed | total | failed | elapsed |
--- |----------|-------------|-----------|-------|--------|---------|
--- | batch_.. | in_progress | 8000      | 50000 | 12     | 35min   |
+-- Step 2: 查状态（随时查，可选）
+SELECT * FROM TABLE(AI_BATCH_STATUS('batch_abc123-xxxx-xxxx-xxxx-xxxxxxxxxxxx'));
+-- | batch_id   | status      | completed | total | failed | elapsed |
+-- |------------|-------------|-----------|-------|--------|---------|
+-- | batch_abc. | in_progress | 8000      | 50000 | 0      | 35min   |
 
--- ③ 查结果（完成后自动写入 target_table，直接查）
-SELECT id, ai_result, model, total_tokens
-FROM product_results
-LIMIT 10;
+-- Step 3: 查结果（batch 完成后，结果已自动写入）
+SELECT product_id, ai_result, model, total_tokens, processed_at
+FROM product_ai_results
+LIMIT 5;
 ```
 
-**Volume 多模态场景：**
+#### 场景二：Volume 模式（图片/视频/音频）
 
 ```sql
 SELECT AI_BATCH_SUBMIT(
-    'endpoint:qwen3-vl-plus',
-    TABLE(
+    model         => 'endpoint:qwen3-vl-plus',
+    source        => TABLE(
         SELECT relative_path,
-               GET_PRESIGNED_URL(VOLUME my_images, relative_path, 86400) AS url
+               GET_PRESIGNED_URL(VOLUME my_images, relative_path, 86400) AS media_url
         FROM DIRECTORY(VOLUME my_images)
         WHERE relative_path LIKE '%.jpg'
     ),
     key_column    => 'relative_path',
-    media_column  => 'url',                        -- 预签名 URL 列
-    target_table  => 'image_results',
-    user_prompt   => '描述这张图片',
-    system_prompt => '你是图片描述专家'
-);
+    media_column  => 'media_url',
+    target_table  => 'image_ai_results',
+    system_prompt => '你是图片描述专家',
+    user_prompt   => '用中文描述这张图片，50字以内'
+) AS batch_id;
 ```
 
-**任务管理：**
+#### 场景三：任务管理
 
 ```sql
--- 列出所有 batch 任务
-SELECT * FROM TABLE(AI_BATCH_LIST());
+-- 列出当前 workspace 的所有 batch 任务
+SELECT * FROM TABLE(AI_BATCH_LIST())
+WHERE status = 'in_progress';
 
 -- 取消任务
-SELECT AI_BATCH_CANCEL('batch_abc123-xxxx-xxxx');
+SELECT AI_BATCH_CANCEL('batch_abc123-xxxx-xxxx-xxxx-xxxxxxxxxxxx');
 
--- 恢复写入（batch 已完成但写入中断时）
-SELECT AI_BATCH_COLLECT('batch_abc123-xxxx-xxxx', 'product_results');
+-- 手动触发结果收割（batch 已完成但自动写入失败时）
+SELECT AI_BATCH_COLLECT('batch_abc123-xxxx-xxxx-xxxx-xxxxxxxxxxxx');
 ```
 
-**优点：**
-- 纯 SQL 体验，不需要 Python
-- 用户显式控制生命周期，心智模型清晰
-- 可与现有 `AI_COMPLETE` 共存（小数据用 `AI_COMPLETE`，大数据用 `AI_BATCH_SUBMIT`）
-
-**缺点：**
-- 需要引擎支持新的函数类型（表函数 + 异步任务注册）
-- 需要引擎维护 batch 任务状态表（类似 Job History）
-- 用户需要学习新的异步模式
-
-**引擎改造点：**
-- 新增 `AI_BATCH_SUBMIT` 表函数：解析 TABLE() 子查询 → 构建 JSONL → 调用 Provider Batch API → 注册异步任务 → 返回 batch_id
-- 新增 `AI_BATCH_STATUS` 表函数：查询 Provider API → 返回状态
-- 新增内部任务表 `information_schema.ai_batch_jobs`：记录所有 batch 任务的状态、进度、目标表
-- 新增后台 worker：轮询未完成的 batch 任务，完成后自动下载结果并写入目标表
-
-### 方案 B：Python Task 封装（零引擎改造）
-
-利用现有的 Python Task + 本项目代码，将 Batch ETL 封装为可调度的任务：
+#### 场景四：增量处理
 
 ```sql
--- ① 一次性配置：创建 Python Task
-CREATE TASK product_ai_etl
-  WAREHOUSE = default_ap
-  SCHEDULE = 'USING CRON 0 2 * * *'              -- 每天凌晨2点
-  COMMENT = 'AI ETL: products → batch inference → product_results'
-AS
-$$
-from ai_etl.pipeline import AIETLPipeline
-pipeline = AIETLPipeline()
-try:
-    stats = pipeline.run()
-    print(f"完成: {stats['success_count']} 成功, {stats['written_rows']} 写入")
-finally:
-    pipeline.close()
-$$;
+-- 第二次提交同一个 source → target 组合时，自动跳过已处理的 key
+SELECT AI_BATCH_SUBMIT(
+    model         => 'endpoint:qwen3max',
+    source        => TABLE(SELECT product_id, product_name FROM products),
+    key_column    => 'product_id',
+    text_column   => 'product_name',
+    target_table  => 'product_ai_results',   -- 已有 8000 行结果
+    system_prompt => '写营销描述',
+    incremental   => true                     -- 自动跳过 target 中已有的 key
+) AS batch_id;
+-- 只提交 target 中不存在的新行
+```
 
--- ② 手动触发
-EXECUTE TASK product_ai_etl;
+#### 场景五：与 Dynamic Table 联动
 
--- ③ 查看任务执行历史
-SELECT * FROM TABLE(TASK_HISTORY())
-WHERE name = 'PRODUCT_AI_ETL'
-ORDER BY scheduled_time DESC;
-
--- ④ 查结果
-SELECT * FROM product_results LIMIT 10;
-
--- ⑤ 下游 Dynamic Table 自动增量刷新
+```sql
+-- batch 结果表作为 Dynamic Table 的上游
 CREATE DYNAMIC TABLE product_insights
   TARGET_LAG = '1 hour'
 AS
 SELECT p.*, r.ai_result, r.model, r.total_tokens
 FROM products p
-JOIN product_results r ON p.product_id = r.product_id;
+JOIN product_ai_results r ON p.product_id = r.product_id;
+
+-- batch 完成 → 结果写入 product_ai_results → Dynamic Table 自动增量刷新
 ```
 
-**优点：**
-- **零引擎改造** — 完全基于现有产品能力（Python Task + Dynamic Table）
-- **本项目代码直接复用** — pipeline.run() 已经处理了提交、轮询、写入、增量、恢复
-- **可调度** — 支持 CRON 定时、手动触发、依赖编排
-- **可观测** — Task History 记录每次执行的状态和耗时
-- **增量天然支持** — 本项目已实现 Table/Volume 两种增量过滤
+### 2.3 函数接口定义
 
-**缺点：**
-- 不是纯 SQL 体验，Task 内部是 Python 代码
-- 用户需要理解 Task + Dynamic Table 的编排模式
-- config.yaml 需要部署到 Task 运行环境中
-
-**落地路径：**
-1. 将本项目打包为 pip 包，上传到 Lakehouse Python 环境
-2. 创建 Python Task，内部调用 `AIETLPipeline().run()`
-3. 配置文件通过 Task 参数或 Volume 文件传入
-4. 下游用 Dynamic Table 做增量聚合
-
-### 方案 C：Hybrid — 引擎自动路由（长期愿景）
-
-扩展现有 `AI_COMPLETE`，引擎根据数据量自动选择实时或 batch：
+#### AI_BATCH_SUBMIT
 
 ```sql
--- 用户写法完全一样
-INSERT INTO product_results
-SELECT product_id, AI_COMPLETE('endpoint:qwen3max', product_name)
-FROM products;
-
--- 引擎内部判断：
---   行数 < 阈值 → 走实时 API（同步返回）
---   行数 > 阈值 → 自动切换为 batch 模式：
---     1. 将所有行打包为 JSONL
---     2. 提交 Batch API
---     3. 将 SQL Job 状态设为 "等待外部任务"
---     4. 后台 worker 轮询 batch 状态
---     5. 完成后唤醒 SQL Job，写入结果
---     6. SQL Job 返回成功
-```
-
-**优点：**
-- 用户零感知，SQL 写法不变
-- 引擎自动选择最优路径
-
-**缺点：**
-- **24 小时级别的 SQL Job** — 引擎执行模型需要根本性改造
-  - SQL Job 需要支持"挂起-唤醒"状态（类似操作系统的进程调度）
-  - 计算资源不能被长时间占用
-  - 连接管理、超时策略、失败恢复都需要重新设计
-- 用户无法预知一条 SQL 会执行几秒还是 24 小时
-- 实现周期最长
-
-## 建议路径
-
-```
-现在                    2-4 周                    1-2 个月
- │                        │                         │
- ▼                        ▼                         ▼
-方案 B                  方案 A                    方案 C
-Python Task 封装        SQL 函数三件套             引擎自动路由
-(零改造，立即可用)      (引擎新增函数)            (引擎架构升级)
- │                        │                         │
- │  本项目代码直接复用     │  AI_BATCH_SUBMIT()      │  AI_COMPLETE 自动切换
- │  Task + Dynamic Table  │  AI_BATCH_STATUS()      │  SQL Job 挂起-唤醒
- │  CRON 调度             │  后台 worker 自动收割    │  对用户完全透明
-```
-
-**现在**：方案 B — 把本项目封装为 Python Task。零引擎改造，代码已验证，可以立即给客户用。
-
-**2-4 周**：方案 A — 引擎新增 `AI_BATCH_SUBMIT` / `AI_BATCH_STATUS` 函数。核心逻辑本项目已实现（JSONL 构建、Provider 调用、轮询、结果写入），引擎侧主要是函数注册和后台 worker 的接入，工作量可控。
-
-**1-2 个月**：方案 C — 引擎级自动路由。需要 SQL Job 支持挂起-唤醒状态，这是执行模型的改动，但范围明确，不涉及存储层。
-
-## 附录：方案 A 的引擎接口设计草案
-
-### AI_BATCH_SUBMIT
-
-```
 AI_BATCH_SUBMIT(
-    model           STRING,          -- 'endpoint:xxx' 或 'connection:xxx'
-    source_query    TABLE,           -- TABLE(SELECT ...) 子查询
-    key_column      STRING,          -- 主键列名
-    text_column     STRING,          -- 文本列名（Table 模式）
-    media_column    STRING DEFAULT NULL,  -- 预签名 URL 列名（Volume 模式）
-    target_table    STRING,          -- 结果写入的目标表
+    -- 必需参数
+    model           STRING,              -- 'endpoint:<name>' 或 'connection:<name>'
+    source          TABLE,               -- TABLE(SELECT ...) 子查询，包含 key 列和内容列
+    key_column      STRING,              -- 主键列名（用于结果回溯和增量过滤）
+    target_table    STRING,              -- 结果写入的目标表（不存在则自动创建）
+
+    -- 内容参数（二选一）
+    text_column     STRING DEFAULT NULL, -- 文本列名（Table 模式）
+    media_column    STRING DEFAULT NULL, -- 预签名 URL 列名（Volume 模式）
+
+    -- Prompt 参数
     system_prompt   STRING DEFAULT 'You are a helpful assistant.',
-    user_prompt     STRING DEFAULT NULL,  -- Volume 模式的用户指令
+    user_prompt     STRING DEFAULT NULL, -- Volume 模式的用户指令
+
+    -- 推理参数
     temperature     FLOAT DEFAULT NULL,
     max_tokens      INT DEFAULT NULL,
-    enable_thinking BOOLEAN DEFAULT NULL
-) RETURNS STRING                     -- 返回 batch_id
+    top_p           FLOAT DEFAULT NULL,
+    enable_thinking BOOLEAN DEFAULT NULL,
+
+    -- 行为参数
+    incremental     BOOLEAN DEFAULT true,  -- 是否自动跳过 target 中已有的 key
+    result_column   STRING DEFAULT 'ai_result',
+    write_mode      STRING DEFAULT 'append'  -- append | overwrite
+)
+RETURNS STRING  -- batch_id
 ```
 
-### AI_BATCH_STATUS
+#### AI_BATCH_STATUS
 
-```
-AI_BATCH_STATUS(
-    batch_id STRING
-) RETURNS TABLE(
-    batch_id    STRING,
-    status      STRING,    -- submitted / in_progress / completed / failed / cancelled
-    total       INT,
-    completed   INT,
-    failed      INT,
-    target_table STRING,
-    submitted_at STRING,
-    completed_at STRING,
-    elapsed     STRING
+```sql
+AI_BATCH_STATUS(batch_id STRING)
+RETURNS TABLE(
+    batch_id        STRING,
+    status          STRING,     -- submitted | validating | in_progress | completed | failed | cancelled
+    provider        STRING,
+    model           STRING,
+    total           INT,
+    completed       INT,
+    failed          INT,
+    target_table    STRING,
+    submitted_at    TIMESTAMP,
+    completed_at    TIMESTAMP,
+    elapsed_seconds INT,
+    submitted_by    STRING
 )
 ```
 
-### 内部任务表
+#### AI_BATCH_LIST
 
 ```sql
--- 自动创建在 information_schema 中
+AI_BATCH_LIST()
+RETURNS TABLE(
+    -- 同 AI_BATCH_STATUS 的列
+)
+-- 返回当前 workspace 下所有 batch 任务
+```
+
+#### AI_BATCH_CANCEL
+
+```sql
+AI_BATCH_CANCEL(batch_id STRING)
+RETURNS STRING  -- 新状态: 'cancelling' | 'cancelled'
+```
+
+#### AI_BATCH_COLLECT
+
+```sql
+AI_BATCH_COLLECT(batch_id STRING)
+RETURNS TABLE(
+    success_count   INT,
+    error_count     INT,
+    written_rows    INT,
+    target_table    STRING
+)
+-- 手动触发结果收割（正常情况下后台 worker 自动执行）
+```
+
+### 2.4 目标表 Schema
+
+`AI_BATCH_SUBMIT` 自动创建目标表，Schema 根据模式自动适配：
+
+**Table 模式：**
+
+| 列 | 类型 | 来源 |
+|----|------|------|
+| `{key_column}` | 从源表推断 | 源表主键 |
+| `{result_column}` | STRING | LLM 推理结果 |
+| `model` | STRING | 模型名称 |
+| `provider` | STRING | Provider 名称 |
+| `prompt_tokens` | INT | 输入 token 数 |
+| `completion_tokens` | INT | 输出 token 数 |
+| `total_tokens` | INT | 总 token 数 |
+| `batch_id` | STRING | Batch 任务 ID |
+| `processed_at` | TIMESTAMP | 处理时间 |
+| `status_code` | INT | HTTP 状态码 |
+| `finish_reason` | STRING | 模型停止原因 |
+| `response_id` | STRING | 服务端请求 ID |
+| `source_text` | STRING | 原始输入文本 |
+| `raw_response` | STRING | 完整响应 JSON |
+
+**Volume 模式额外列：**
+
+| 列 | 类型 | 来源 |
+|----|------|------|
+| `file_path` | STRING | 文件相对路径 |
+| `volume_name` | STRING | Volume 标识 |
+| `file_size` | BIGINT | 文件大小 |
+
+### 2.5 系统架构
+
+```
+用户 SQL                          引擎                              Provider
+───────                          ────                              ────────
+                                 ┌─────────────────────┐
+AI_BATCH_SUBMIT(...)  ────────>  │ 1. 解析 source 子查询 │
+                                 │ 2. 增量过滤           │
+                                 │ 3. 构建 JSONL         │
+                                 │ 4. 上传文件           │──────>  Upload File
+                                 │ 5. 创建 batch         │──────>  Create Batch
+                                 │ 6. 写入 ai_batch_jobs │
+                                 │ 7. 返回 batch_id      │
+                                 └─────────────────────┘
+                                           │
+                                           ▼
+                                 ┌─────────────────────┐
+                                 │ 后台 Batch Worker     │
+                                 │ (独立进程/线程)       │
+                                 │                      │
+AI_BATCH_STATUS(...)  ────────>  │ 轮询 Provider API    │──────>  Get Batch Status
+                                 │                      │
+                                 │ batch completed?     │
+                                 │   ├─ yes: 下载结果   │──────>  Download Results
+                                 │   │       解析 JSONL  │
+                                 │   │       写入目标表   │
+                                 │   │       更新状态     │
+                                 │   └─ no:  继续轮询    │
+                                 └─────────────────────┘
+                                           │
+                                           ▼
+SELECT * FROM target  ────────>  ┌─────────────────────┐
+                                 │ 目标表（已有结果）    │
+                                 └─────────────────────┘
+```
+
+### 2.6 内部状态表
+
+```sql
+-- 引擎自动维护，用户可通过 AI_BATCH_LIST() 查询
+-- 存储在 information_schema.ai_batch_jobs
 CREATE TABLE information_schema.ai_batch_jobs (
-    batch_id        STRING PRIMARY KEY,
-    provider        STRING,
-    model           STRING,
-    status          STRING,
-    target_table    STRING,
-    source_query    STRING,
-    total_requests  INT,
-    completed       INT,
-    failed          INT,
-    submitted_at    TIMESTAMP,
-    completed_at    TIMESTAMP,
-    submitted_by    STRING,
-    workspace       STRING
+    batch_id            STRING PRIMARY KEY,
+    provider_batch_id   STRING,          -- Provider 返回的原始 batch_id
+    provider            STRING,          -- dashscope | zhipuai
+    model               STRING,
+    status              STRING,          -- submitted | validating | in_progress | completed | failed | cancelled | collecting | collect_failed
+    source_query        STRING,          -- 原始 source 子查询 SQL
+    key_column          STRING,
+    target_table        STRING,
+    target_schema       STRING,
+    total_requests      INT,
+    completed_requests  INT,
+    failed_requests     INT,
+    written_rows        INT,
+    system_prompt       STRING,
+    temperature         FLOAT,
+    max_tokens          INT,
+    incremental         BOOLEAN,
+    submitted_at        TIMESTAMP,
+    completed_at        TIMESTAMP,
+    collected_at        TIMESTAMP,       -- 结果写入完成时间
+    submitted_by        STRING,          -- 提交用户
+    workspace           STRING,
+    error_message       STRING           -- 失败时的错误信息
 );
 ```
+
+### 2.7 后台 Batch Worker 设计
+
+Worker 是引擎内部的后台服务，负责轮询和收割：
+
+**职责：**
+1. 定期扫描 `ai_batch_jobs` 中 status = `in_progress` 或 `validating` 的任务
+2. 调用 Provider API 查询状态
+3. 任务完成后：下载结果 JSONL → 解析 → 写入目标表 → 更新状态为 `completed`
+4. 任务失败后：下载 error 文件 → 记录错误信息 → 更新状态为 `failed`
+
+**轮询策略：**
+- 默认间隔：60 秒
+- 无任务时：休眠，有新提交时唤醒
+- 并发：每个 workspace 独立轮询，避免互相影响
+
+**容错：**
+- Worker 重启后从 `ai_batch_jobs` 恢复所有未完成任务
+- 写入目标表失败时状态设为 `collect_failed`，用户可通过 `AI_BATCH_COLLECT` 手动重试
+- Provider API 调用失败时指数退避重试
+
+**资源：**
+- Worker 不占用用户的计算资源（VCluster）
+- 使用系统级后台资源，类似 Dynamic Table 的刷新 worker
+
+### 2.8 与现有 AI_COMPLETE 的关系
+
+| 维度 | AI_COMPLETE | AI_BATCH_SUBMIT |
+|------|-------------|-----------------|
+| 调用模式 | 同步（标量函数） | 异步（提交-轮询-收割） |
+| 适用规模 | 百级行 | 万级行 |
+| 成本 | 标准价 | 50% 折扣 |
+| 结果返回 | 内联在 SELECT 结果中 | 写入独立目标表 |
+| 多模态 | 支持 | 支持 |
+| 增量 | 不支持 | 内置 |
+| 元数据 | 无 | 12 个字段自动记录 |
+
+两者共存，用户根据场景选择：
+- 交互式分析、少量数据 → `AI_COMPLETE`
+- 批量处理、ETL 流水线 → `AI_BATCH_SUBMIT`
+
+### 2.9 实现计划
+
+基于 [ai_etl 项目](https://github.com/yunqiqiliang/ai_etl) 已验证的代码，实现分为三个阶段：
+
+**Week 1：核心函数**
+- [ ] `AI_BATCH_SUBMIT`：解析参数 → 构建 JSONL → 调用 Provider → 写入状态表 → 返回 batch_id
+- [ ] `AI_BATCH_STATUS`：查询状态表 + Provider API → 返回进度
+- [ ] `information_schema.ai_batch_jobs` 状态表
+- [ ] 复用 ai_etl 的 JSONL 构建逻辑（`build_jsonl_for_batch` / `build_multimodal_jsonl`）
+- [ ] 复用 ai_etl 的 Provider 层（`DashScopeProvider` / `ZhipuAIProvider`）
+
+**Week 2：后台 Worker + 结果收割**
+- [ ] Batch Worker 服务：轮询 + 下载 + 写入目标表
+- [ ] 复用 ai_etl 的结果解析逻辑（`BatchProvider.parse_results`）
+- [ ] 复用 ai_etl 的目标表写入逻辑（`write_results` / `write_volume_results`）
+- [ ] `AI_BATCH_LIST` / `AI_BATCH_CANCEL` / `AI_BATCH_COLLECT`
+- [ ] 增量过滤（查目标表已有 key）
+
+**Week 3：集成测试 + 文档**
+- [ ] 端到端测试：Table 模式 + Volume 模式
+- [ ] 与 Dynamic Table 联动测试
+- [ ] 并发提交测试（多个 batch 同时运行）
+- [ ] 容错测试（Worker 重启、Provider 超时、写入失败）
+- [ ] SQL 文档 + 用户指南
+
+## 3. 备选方案
+
+### 3.1 方案 B：Python Task 封装（过渡方案）
+
+在方案 A 开发期间，可以先用 Python Task + 本项目代码作为过渡：
+
+```sql
+CREATE TASK product_ai_etl
+  WAREHOUSE = default_ap
+  SCHEDULE = 'USING CRON 0 2 * * *'
+AS $$
+from ai_etl.pipeline import AIETLPipeline
+pipeline = AIETLPipeline()
+try:
+    pipeline.run()
+finally:
+    pipeline.close()
+$$;
+```
+
+优点：零引擎改造，立即可用。缺点：不是纯 SQL 体验。
+
+### 3.2 方案 C：引擎自动路由（远期演进）
+
+方案 A 稳定后，可以进一步让 `AI_COMPLETE` 在大数据量时自动切换为 batch 模式：
+
+```sql
+-- 用户写法不变，引擎自动判断
+INSERT INTO results
+SELECT id, AI_COMPLETE('endpoint:qwen3max', text) FROM big_table;
+-- 引擎检测到 50000 行 → 内部自动走 AI_BATCH_SUBMIT → 异步执行 → 结果物化
+```
+
+这需要引擎支持 SQL Job 的"挂起-唤醒"状态，是方案 A 的自然演进。
+
+## 4. 设计决策记录
+
+| 决策 | 选择 | 理由 |
+|------|------|------|
+| 首选方案 | A（SQL 函数三件套） | 纯 SQL 体验，2-3 周可交付 |
+| 异步模型 | 提交-轮询-收割 | 24 小时窗口下唯一可行的模型 |
+| 结果存储 | 写入用户指定的目标表 | 可被下游 SQL/BI/Dynamic Table 直接消费 |
+| 增量处理 | 默认开启 | 避免重复处理，节省成本 |
+| 元数据 | 12 个字段自动记录 | 审计、成本分析、问题排查 |
+| Worker 资源 | 系统级后台资源 | 不占用用户 VCluster |
+| Provider 抽象 | 复用 ai_etl Provider 层 | DashScope + ZhipuAI 已验证 |

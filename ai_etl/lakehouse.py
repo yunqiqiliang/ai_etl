@@ -82,8 +82,12 @@ class LakehouseClient:
         text_column: Optional[str] = None,
         filter_expr: Optional[str] = None,
         batch_size: Optional[int] = None,
+        target_table: Optional[str] = None,
     ) -> List[Dict[str, str]]:
-        """从源表读取数据，返回字典列表。"""
+        """从源表读取数据，返回字典列表。
+
+        如果指定了 target_table，会自动过滤掉目标表中已存在的 key（增量处理）。
+        """
         cfg = self._config
         table = table or cfg.etl_table_name
         key_columns = key_columns or cfg.etl_table_key_columns
@@ -128,6 +132,29 @@ class LakehouseClient:
             result.append(record)
 
         logger.info("读取完成: %d 行", len(result))
+
+        # 增量过滤：排除目标表中已处理的 key
+        if target_table and result:
+            processed_keys: set = set()
+            try:
+                key_select = ", ".join(key_cols)
+                processed_rows = self.session.sql(
+                    f"SELECT DISTINCT {key_select} FROM {target_table}"
+                ).collect()
+                for r in processed_rows:
+                    key_tuple = tuple(str(r[k]) if r[k] is not None else "" for k in key_cols)
+                    processed_keys.add(key_tuple)
+                logger.info("目标表已处理 %d 个 key", len(processed_keys))
+            except Exception:
+                logger.debug("目标表 %s 不存在或无 key 列，视为无已处理数据", target_table)
+
+            if processed_keys:
+                before = len(result)
+                result = [
+                    row for row in result
+                    if tuple(row.get(k, "") for k in key_cols) not in processed_keys
+                ]
+                logger.info("增量过滤: %d → %d 行新数据", before, len(result))
         return result
 
     # ── Volume 文件发现 ───────────────────────────────────────
@@ -284,6 +311,7 @@ class LakehouseClient:
         provider_name: Optional[str] = None,
         endpoint: str = "/v1/chat/completions",
         output_path: Optional[Union[str, Path]] = None,
+        transform_params: Optional[Dict[str, Any]] = None,
     ) -> Path:
         """从 Volume 文件构建多模态 Batch 推理的 JSONL 输入文件。"""
         import time
@@ -329,7 +357,7 @@ class LakehouseClient:
                 "custom_id": custom_id,
                 "method": "POST",
                 "url": endpoint,
-                "body": {"model": model, "messages": messages},
+                "body": {"model": model, "messages": messages, **(transform_params or {})},
             }
             line = json.dumps(record, ensure_ascii=False, separators=(",", ":"))
 
@@ -509,6 +537,7 @@ class LakehouseClient:
         system_prompt: Optional[str] = None,
         endpoint: str = "/v1/chat/completions",
         output_path: Optional[Union[str, Path]] = None,
+        transform_params: Optional[Dict[str, Any]] = None,
     ) -> Path:
         """从源表数据构建 Batch 推理的 JSONL 输入文件。"""
         import time
@@ -555,6 +584,7 @@ class LakehouseClient:
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": text_value},
                     ],
+                    **(transform_params or {}),
                 },
             }
             line = json.dumps(record, ensure_ascii=False, separators=(",", ":"))

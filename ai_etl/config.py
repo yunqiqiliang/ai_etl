@@ -395,6 +395,28 @@ class Config:
         return self._get_nested("etl", "sources", "table", "target_table", default="")
 
     @property
+    def etl_table_temperature(self) -> Optional[float]:
+        val = self._get_nested("etl", "sources", "table", "temperature", default=None)
+        return float(val) if val is not None else None
+
+    @property
+    def etl_table_max_tokens(self) -> Optional[int]:
+        val = self._get_nested("etl", "sources", "table", "max_tokens", default=None)
+        return int(val) if val is not None else None
+
+    @property
+    def etl_table_top_p(self) -> Optional[float]:
+        val = self._get_nested("etl", "sources", "table", "top_p", default=None)
+        return float(val) if val is not None else None
+
+    @property
+    def etl_table_enable_thinking(self) -> Optional[bool]:
+        val = self._get_nested("etl", "sources", "table", "enable_thinking", default=None)
+        if val is None:
+            return None
+        return bool(val)
+
+    @property
     def etl_volume_enabled(self) -> bool:
         val = self._get_nested("etl", "sources", "volume", "enabled", default=False)
         if isinstance(val, bool):
@@ -466,7 +488,46 @@ class Config:
         """Volume 数据源的独立目标表（优先于全局 etl.target.table）。"""
         return self._get_nested("etl", "sources", "volume", "target_table", default="")
 
+    @property
+    def etl_volume_temperature(self) -> Optional[float]:
+        val = self._get_nested("etl", "sources", "volume", "temperature", default=None)
+        return float(val) if val is not None else None
+
+    @property
+    def etl_volume_max_tokens(self) -> Optional[int]:
+        val = self._get_nested("etl", "sources", "volume", "max_tokens", default=None)
+        return int(val) if val is not None else None
+
+    @property
+    def etl_volume_top_p(self) -> Optional[float]:
+        val = self._get_nested("etl", "sources", "volume", "top_p", default=None)
+        return float(val) if val is not None else None
+
+    @property
+    def etl_volume_enable_thinking(self) -> Optional[bool]:
+        val = self._get_nested("etl", "sources", "volume", "enable_thinking", default=None)
+        if val is None:
+            return None
+        return bool(val)
+
     # ── Model Resolution ──────────────────────────────────────
+
+    def get_transform_params(self, source_type: str = "table") -> Dict[str, Any]:
+        """获取推理参数（temperature/max_tokens/top_p/enable_thinking），仅返回非 None 的。"""
+        if source_type == "volume":
+            t, m, p, e = self.etl_volume_temperature, self.etl_volume_max_tokens, self.etl_volume_top_p, self.etl_volume_enable_thinking
+        else:
+            t, m, p, e = self.etl_table_temperature, self.etl_table_max_tokens, self.etl_table_top_p, self.etl_table_enable_thinking
+        params: Dict[str, Any] = {}
+        if t is not None:
+            params["temperature"] = t
+        if m is not None:
+            params["max_tokens"] = m
+        if p is not None:
+            params["top_p"] = p
+        if e is not None:
+            params["enable_thinking"] = e
+        return params
 
     @property
     def multimodal_model(self) -> str:

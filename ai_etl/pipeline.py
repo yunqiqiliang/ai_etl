@@ -222,7 +222,7 @@ class AIETLPipeline:
         resolved_prompt = system_prompt or cfg.etl_table_system_prompt
         endpoint = provider.build_jsonl_endpoint()
 
-        # Step 1: 读取源数据
+        # Step 1: 读取源数据（增量：自动跳过目标表已有的 key）
         logger.info("[Table] 读取源数据...")
         rows = self._lakehouse.read_source(
             table=source_table or cfg.etl_table_name,
@@ -230,6 +230,7 @@ class AIETLPipeline:
             text_column=text_column,
             filter_expr=filter_expr or cfg.etl_table_filter,
             batch_size=cfg.etl_table_batch_size,
+            target_table=target_table,
         )
         logger.info("[Table] 读取到 %d 行", len(rows))
 
@@ -239,9 +240,13 @@ class AIETLPipeline:
 
         # Step 2: 构建 JSONL → 上传 → 创建 batch
         logger.info("[Table] 构建 JSONL 并提交...")
+        transform_params = cfg.get_transform_params("table")
+        if transform_params:
+            logger.info("[Table] 推理参数: %s", transform_params)
         jsonl_path = self._lakehouse.build_jsonl_for_batch(
             rows, key_columns=key_columns, text_column=text_column,
             model=resolved_model, system_prompt=resolved_prompt, endpoint=endpoint,
+            transform_params=transform_params,
         )
         file_id = provider.upload_file(jsonl_path)
         if not file_id:
@@ -324,11 +329,15 @@ class AIETLPipeline:
 
         # Step 3: 构建 JSONL → 上传 → 创建 batch
         logger.info("[Volume] 构建多模态 JSONL 并提交...")
+        transform_params = cfg.get_transform_params("volume")
+        if transform_params:
+            logger.info("[Volume] 推理参数: %s", transform_params)
         jsonl_path = self._lakehouse.build_multimodal_jsonl(
             files_with_urls, model=resolved_model,
             user_prompt=cfg.etl_volume_user_prompt,
             system_prompt=resolved_prompt,
             provider_name=provider.name, endpoint=endpoint,
+            transform_params=transform_params,
         )
         file_id = provider.upload_file(jsonl_path)
         if not file_id:

@@ -50,6 +50,11 @@ etl:
       batch_size: 0                    # 每批最大行数（0 = 不限制）
       system_prompt: "You are a helpful assistant."
       target_table: "schema.table_results"  # 目标表（不含 schema 时自动补 clickzetta.schema）
+      # ── 推理参数（可选，不设则用模型默认值） ──
+      # temperature: 0.7
+      # max_tokens: 1024
+      # top_p: 0.9
+      # enable_thinking: false            # 关闭 qwen3.5 系列思考模式可节省 token
 
     # ── Volume 数据源（非结构化文件：图片/视频/音频） ──
     volume:
@@ -63,6 +68,11 @@ etl:
       system_prompt: "You are an image analysis expert."
       user_prompt: "Describe this image in detail"
       target_table: "schema.volume_results"  # 目标表（不含 schema 时自动补 clickzetta.schema）
+      # ── 推理参数（可选，不设则用模型默认值） ──
+      # temperature: 0.7
+      # max_tokens: 1024
+      # top_p: 0.9
+      # enable_thinking: false
 
   # ── 全局目标表配置（仅当 source 未指定 target_table 时使用） ──
   target:

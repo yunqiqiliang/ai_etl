@@ -23,14 +23,11 @@
 ## 待优化
 
 ### P1: Transform 参数扩展
-- [ ] 支持 `temperature`, `max_tokens`, `enable_thinking` 等推理参数
-- [ ] 这些参数目前在 provider 段配置，应集中到 source 级别或独立 transform 段
+- [ ] JSONL body 中支持 `temperature`, `max_tokens`, `top_p` 等推理参数
+- [ ] 支持 `enable_thinking: false` 关闭 qwen3.5 系列的思考模式（可节省 token）
+- [ ] 这些参数在 source 级别配置，不同 source 可以用不同的推理参数
 
 ### P2: Table 模式增量处理
-- [ ] 当前 table 模式每次重跑会重新处理所有行
-- [ ] 可通过记录已处理的 key 到目标表实现增量（类似 volume 模式的 file_path 过滤）
-
-### P3: 多 Batch 状态持久化
-- [ ] 当前 `last_batch.json` 只保存最后一个 batch 的状态
-- [ ] 双数据源模式下，volume 的状态会覆盖 table 的
-- [ ] 改为按 batch_id 索引的状态文件，支持同时 resume 多个任务
+- [ ] 当前 table 模式每次重跑会重新处理所有匹配行
+- [ ] 用户可通过 `filter` 字段手动控制范围（如 `created_at > '2026-04-25'`）
+- [ ] 框架级增量：查询目标表已有 key，自动跳过（类似 volume 模式的 file_path 过滤）

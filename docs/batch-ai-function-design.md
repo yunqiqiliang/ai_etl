@@ -218,6 +218,72 @@ RETURNS TABLE(
 -- 手动触发结果收割（正常情况下后台 worker 自动执行）
 ```
 
+#### AI_BATCH_PLAN
+
+智能分析数据源，推荐 ETL 配置。采样少量数据，调用实时 API 分析内容，返回推荐的模型、prompt 和参数。
+
+```sql
+AI_BATCH_PLAN(
+    -- 数据源（二选一）
+    source_table    STRING DEFAULT NULL,   -- 表名（Table 模式）
+    source_volume   STRING DEFAULT NULL,   -- Volume SQL 引用（Volume 模式，如 'USER VOLUME'）
+
+    -- 可选参数
+    subdirectory    STRING DEFAULT '',     -- Volume 子目录过滤
+    hint            STRING DEFAULT '',     -- 用户意图提示（如 '提取情感倾向' '生成英文营销文案'）
+    sample_size     INT DEFAULT 5          -- 采样行数/文件数
+)
+RETURNS TABLE(
+    key_column      STRING,    -- 推荐的主键列（Table 模式）
+    text_column     STRING,    -- 推荐的文本列（Table 模式）
+    model           STRING,    -- 推荐的模型
+    system_prompt   STRING,    -- 推荐的 system prompt
+    user_prompt     STRING,    -- 推荐的 user prompt（含 {text} 占位符）
+    file_types      STRING,    -- 推荐的文件类型过滤（Volume 模式）
+    reasoning       STRING,    -- 推荐理由
+    estimated_tokens INT,      -- 预估总 token 数
+    estimated_cost  STRING,    -- 预估 batch 成本
+    config_snippet  STRING     -- 可直接使用的 config.yaml 片段
+)
+```
+
+**使用示例：**
+
+```sql
+-- Table 模式：AI 自动推荐配置
+SELECT * FROM TABLE(AI_BATCH_PLAN(source_table => 'mcp_demo.demo_products'));
+
+-- 带用户意图提示
+SELECT * FROM TABLE(AI_BATCH_PLAN(
+    source_table => 'mcp_demo.reviews',
+    hint => '提取每条评论的情感倾向：正面/负面/中性'
+));
+
+-- Volume 模式
+SELECT * FROM TABLE(AI_BATCH_PLAN(
+    source_volume => 'USER VOLUME',
+    subdirectory => 'product_images/',
+    hint => '识别产品类别和主要颜色'
+));
+
+-- Plan → Submit 一步到位
+WITH plan AS (
+    SELECT * FROM TABLE(AI_BATCH_PLAN(
+        source_table => 'mcp_demo.demo_products',
+        hint => '生成英文营销文案'
+    ))
+)
+SELECT AI_BATCH_SUBMIT(
+    model         => plan.model,
+    source        => TABLE(SELECT product_id, product_name FROM mcp_demo.demo_products),
+    key_column    => plan.key_column,
+    text_column   => plan.text_column,
+    target_table  => 'mcp_demo.products_en_copy',
+    system_prompt => plan.system_prompt,
+    user_prompt   => plan.user_prompt
+) FROM plan;
+```
+
 ### 2.4 目标表 Schema
 
 `AI_BATCH_SUBMIT` 自动创建目标表，Schema 根据模式自动适配：
@@ -343,15 +409,13 @@ Worker 是引擎内部的后台服务，负责轮询和收割：
 
 ### 2.8 与现有 AI_COMPLETE 的关系
 
-| 维度 | AI_COMPLETE | AI_BATCH_SUBMIT |
-|------|-------------|-----------------|
-| 调用模式 | 同步（标量函数） | 异步（提交-轮询-收割） |
-| 适用规模 | 百级行 | 万级行 |
-| 成本 | 标准价 | 50% 折扣 |
-| 结果返回 | 内联在 SELECT 结果中 | 写入独立目标表 |
-| 多模态 | 支持 | 支持 |
-| 增量 | 不支持 | 内置 |
-| 元数据 | 无 | 12 个字段自动记录 |
+| 维度 | AI_COMPLETE | AI_BATCH_PLAN | AI_BATCH_SUBMIT |
+|------|-------------|---------------|-----------------|
+| 用途 | 实时推理 | 分析数据，推荐配置 | 批量推理 |
+| 调用模式 | 同步（标量函数） | 同步（秒级返回） | 异步（提交-轮询-收割） |
+| 适用规模 | 百级行 | 采样几行 | 万级行 |
+| 成本 | 标准价 | 极低（仅采样） | 50% 折扣 |
+| 结果返回 | 内联在 SELECT 结果中 | 推荐配置 + config 片段 | 写入独立目标表 |
 
 两者共存，用户根据场景选择：
 - 交互式分析、少量数据 → `AI_COMPLETE`
@@ -364,6 +428,7 @@ Worker 是引擎内部的后台服务，负责轮询和收割：
 **Week 1：核心函数**
 - [ ] `AI_BATCH_SUBMIT`：解析参数 → 构建 JSONL → 调用 Provider → 写入状态表 → 返回 batch_id
 - [ ] `AI_BATCH_STATUS`：查询状态表 + Provider API → 返回进度
+- [ ] `AI_BATCH_PLAN`：采样数据 → 调用实时 API 分析 → 返回推荐配置（复用 ai_etl planner.py）
 - [ ] `information_schema.ai_batch_jobs` 状态表
 - [ ] 复用 ai_etl 的 JSONL 构建逻辑（`build_jsonl_for_batch` / `build_multimodal_jsonl`）
 - [ ] 复用 ai_etl 的 Provider 层（`DashScopeProvider` / `ZhipuAIProvider`）
@@ -421,8 +486,10 @@ SELECT id, AI_COMPLETE('endpoint:qwen3max', text) FROM big_table;
 
 | 决策 | 选择 | 理由 |
 |------|------|------|
-| 首选方案 | A（SQL 函数三件套） | 纯 SQL 体验，2-3 周可交付 |
+| 首选方案 | A（SQL 函数套件） | 纯 SQL 体验，2-3 周可交付 |
+| 函数数量 | 7 个 | PLAN + SUBMIT + STATUS + LIST + CANCEL + COLLECT + 状态表 |
 | 异步模型 | 提交-轮询-收割 | 24 小时窗口下唯一可行的模型 |
+| 智能配置 | AI_BATCH_PLAN | 采样分析 + 用户 hint → 推荐 model/prompt/参数 |
 | 结果存储 | 写入用户指定的目标表 | 可被下游 SQL/BI/Dynamic Table 直接消费 |
 | 增量处理 | 默认开启 | 避免重复处理，节省成本 |
 | 元数据 | 12 个字段自动记录 | 审计、成本分析、问题排查 |

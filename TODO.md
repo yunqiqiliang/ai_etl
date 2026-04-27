@@ -1,64 +1,36 @@
-# AI ETL TODO
+# AI ETL — TODO
 
-## 等 batch 测试完成后
+## 已完成 ✅
 
-### P0: 端到端验证
-- [ ] Volume batch (`batch_dfd05341`) 完成后验证结果写入目标表
-- [ ] 验证增量处理：重跑 pipeline 应该 0 新文件
-- [ ] Table 模式回归测试：确认双数据源改造没有破坏原有流程
+- [x] Table 数据源：结构化文本 → LLM 批量推理 → 结果写回
+- [x] Volume 数据源：图片/视频/音频 → 预签名 URL → 多模态推理 → 结果写回
+- [x] 双数据源并行提交，统一轮询等待
+- [x] Per-source 独立目标表（table/volume 各自写入不同表）
+- [x] 目标表自动创建 + 列自动添加 + 类型自动匹配
+- [x] 12 个元数据列（model, tokens, batch_id, processed_at 等）
+- [x] 增量处理（Volume 模式跳过已处理文件）
+- [x] Resume 恢复中断的任务
+- [x] 多 Provider 支持（DashScope + ZhipuAI）
+- [x] 北京时间 processed_at
+- [x] 表名自动补 schema 前缀
+- [x] 友好的错误信息（数据源/模型/配置问题）
+- [x] 空数据防御（空表/空文件/空结果）
+- [x] 端到端验证通过（双数据源并行，13/13 成功）
+- [x] README 完整文档
+- [x] 解决方案文档（docs/solution.html）
+- [x] 61 个单元测试
 
-### P1: 配置重构 — ETL 三段式
-当前问题：provider 段（model/prompt/poll_interval）和 etl 段有大量重叠，Transform 和 Load 配置是黑盒。
+## 待优化
 
-目标结构：
-```yaml
-etl:
-  sources:           # Extract
-    table:
-      enabled: true
-      table: "schema.source"
-      key_columns: "id"
-      text_column: "content"
-      filter: ""
-      batch_size: 0
-    volume:
-      enabled: false
-      volume_type: "user"
-      volume_name: ""
-      file_types: [".jpg"]
-      subdirectory: ""
-      url_expiration: 86400
-      batch_size: 0
+### P1: Transform 参数扩展
+- [ ] 支持 `temperature`, `max_tokens`, `enable_thinking` 等推理参数
+- [ ] 这些参数目前在 provider 段配置，应集中到 source 级别或独立 transform 段
 
-  transform:         # Transform（集中所有推理相关配置）
-    provider: dashscope
-    model: ""                    # 空 = 按 source 类型自动选择
-    multimodal_model: ""
-    system_prompt: "You are a helpful assistant."
-    user_prompt: "Describe this file"
-    temperature: null            # null = 模型默认值
-    max_tokens: null
-    enable_thinking: null        # 控制思考模式（qwen3.5 系列默认开启）
-    completion_window: "24h"
-    poll_interval: 300.0
+### P2: Table 模式增量处理
+- [ ] 当前 table 模式每次重跑会重新处理所有行
+- [ ] 可通过记录已处理的 key 到目标表实现增量（类似 volume 模式的 file_path 过滤）
 
-  target:            # Load
-    table: "schema.target"
-    result_column: "ai_result"
-    write_mode: "append"
-    include_metadata: true       # 是否写入 12 个元数据列
-    include_source_text: true    # 是否写入原始输入文本
-    include_raw_response: true   # 是否写入完整 response JSON
-```
-
-变更范围：
-- config.py: 所有 ETL 属性路径改为三段式
-- pipeline.py: _run_table/_run_volume 读取 transform 段
-- lakehouse.py: build_jsonl 支持 temperature/max_tokens 等参数
-- config.yaml.example: 更新模板
-- tests/: 更新测试
-
-顶层 provider 段只保留连接层配置（endpoint/base_url），不放模型和 prompt。
-
-### P2: 提交到 GitHub
-- [x] git add + commit + push 多模态升级代码
+### P3: 多 Batch 状态持久化
+- [ ] 当前 `last_batch.json` 只保存最后一个 batch 的状态
+- [ ] 双数据源模式下，volume 的状态会覆盖 table 的
+- [ ] 改为按 batch_id 索引的状态文件，支持同时 resume 多个任务

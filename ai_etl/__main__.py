@@ -42,6 +42,13 @@ def main():
     status_p.add_argument("batch_id", help="Batch 任务 ID")
     status_p.add_argument("--provider", help="Provider 名称")
 
+    # plan
+    plan_p = sub.add_parser("plan", help="分析数据源，推荐 ETL 配置")
+    plan_p.add_argument("--table", help="源表名 (如 schema.table)")
+    plan_p.add_argument("--volume-type", choices=["user", "external", "table"], default="user", help="Volume 类型")
+    plan_p.add_argument("--volume-name", help="Volume 名称 (external/table 类型必需)")
+    plan_p.add_argument("--subdirectory", default="", help="Volume 子目录过滤")
+
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -94,6 +101,30 @@ def main():
         info = provider.get_batch_status(args.batch_id)
         for k, v in info.items():
             print(f"  {k}: {v}")
+
+    elif args.command == "plan":
+        from ai_etl.planner import plan_table, plan_volume, format_plan_result, generate_config_snippet
+
+        if args.table:
+            print(f"\n🔍 分析表: {args.table}\n")
+            result = plan_table(args.table)
+            print(format_plan_result(result, "table"))
+            print("\n--- config.yaml 片段 ---\n")
+            print(generate_config_snippet(result, "table"))
+        elif args.volume_type:
+            vol_desc = f"{args.volume_type}" + (f" ({args.volume_name})" if args.volume_name else "")
+            print(f"\n🔍 分析 Volume: {vol_desc}\n")
+            result = plan_volume(
+                volume_type=args.volume_type,
+                volume_name=args.volume_name or "",
+                subdirectory=args.subdirectory,
+            )
+            print(format_plan_result(result, "volume"))
+            print("\n--- config.yaml 片段 ---\n")
+            print(generate_config_snippet(result, "volume"))
+        else:
+            print("请指定 --table 或 --volume-type")
+            sys.exit(1)
 
     else:
         parser.print_help()

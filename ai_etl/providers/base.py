@@ -256,12 +256,13 @@ class BatchProvider(ABC):
         from ai_etl.result_keys import CUSTOM_ID
 
         errors = []
-        for line in text.strip().split("\n"):
+        for line_num, line in enumerate(text.strip().split("\n"), start=1):
             if not line.strip():
                 continue
             try:
                 record = json.loads(line)
             except json.JSONDecodeError:
+                logger.warning("错误文件第 %d 行 JSON 解析失败，已跳过", line_num)
                 continue
             error_info = record.get("error") or {}
             errors.append({

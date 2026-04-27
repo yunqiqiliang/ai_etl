@@ -573,7 +573,7 @@ class AIETLPipeline:
             if state.get("batch_id") == batch_id:
                 return state
         except Exception:
-            pass
+            logger.debug("读取 last_batch.json 失败，返回空状态")
         return {}
 
     @staticmethod

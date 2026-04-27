@@ -535,11 +535,17 @@ class LakehouseClient:
         text_column: Optional[str] = None,
         model: Optional[str] = None,
         system_prompt: Optional[str] = None,
+        user_prompt: Optional[str] = None,
         endpoint: str = "/v1/chat/completions",
         output_path: Optional[Union[str, Path]] = None,
         transform_params: Optional[Dict[str, Any]] = None,
     ) -> Path:
-        """从源表数据构建 Batch 推理的 JSONL 输入文件。"""
+        """从源表数据构建 Batch 推理的 JSONL 输入文件。
+
+        Args:
+            user_prompt: 用户 prompt 模板。含 {text} 时替换为 text_column 值。
+                        不传则直接用 text_column 值作为 user message。
+        """
         import time
 
         cfg = self._config
@@ -547,6 +553,7 @@ class LakehouseClient:
         text_column = text_column or cfg.etl_table_text_column
         model = model or cfg.model_name
         system_prompt = system_prompt or cfg.system_prompt
+        user_prompt = user_prompt if user_prompt is not None else cfg.etl_table_user_prompt
 
         key_cols = [c.strip() for c in key_columns.split(",")]
 
@@ -574,6 +581,12 @@ class LakehouseClient:
                 continue
             seen_ids.add(custom_id)
 
+            # 构建 user message：有 user_prompt 模板时替换 {text}，否则直接用原始文本
+            if user_prompt:
+                user_content = user_prompt.replace("{text}", text_value)
+            else:
+                user_content = text_value
+
             record = {
                 "custom_id": custom_id,
                 "method": "POST",
@@ -582,7 +595,7 @@ class LakehouseClient:
                     "model": model,
                     "messages": [
                         {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": text_value},
+                        {"role": "user", "content": user_content},
                     ],
                     **(transform_params or {}),
                 },

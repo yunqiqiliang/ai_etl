@@ -395,6 +395,11 @@ class Config:
         return self._get_nested("etl", "sources", "table", "target_table", default="")
 
     @property
+    def etl_table_user_prompt(self) -> Optional[str]:
+        """Table 模式的 user prompt 模板。含 {text} 占位符时替换为 text_column 值。不配则直接用原始文本。"""
+        return self._get_nested("etl", "sources", "table", "user_prompt", default=None)
+
+    @property
     def etl_table_temperature(self) -> Optional[float]:
         val = self._get_nested("etl", "sources", "table", "temperature", default=None)
         return float(val) if val is not None else None

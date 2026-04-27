@@ -49,6 +49,7 @@ etl:
       filter: ""                       # WHERE 过滤条件（留空不过滤）
       batch_size: 0                    # 每批最大行数（0 = 不限制）
       system_prompt: "You are a helpful assistant."
+      user_prompt: ""                      # user prompt 模板，{text} 替换为 text_column 值。留空则直接用原始文本
       target_table: "schema.table_results"  # 目标表（不含 schema 时自动补 clickzetta.schema）
       # ── 推理参数（可选，不设则用模型默认值） ──
       # temperature: 0.7

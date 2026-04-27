@@ -290,7 +290,8 @@ etl:
       key_columns: "review_id"
       text_column: "review_text"
       filter: "status = 'pending'"
-      system_prompt: "Classify sentiment: positive/negative/neutral"
+      system_prompt: "You are a sentiment analysis expert."
+      user_prompt: "Classify the sentiment of this review: {text}"  # {text} = review_text value
       target_table: "schema.review_results"
 ```
 
@@ -322,10 +323,18 @@ Volume mode features:
 ### CLI
 
 ```bash
+# AI 分析数据，推荐 ETL 配置（先 plan 再 run）
+python -m ai_etl plan --table schema.my_table
+python -m ai_etl plan --table schema.my_table --hint "提取情感倾向"
+python -m ai_etl plan --volume-type user --subdirectory "images/" --hint "识别产品类别"
+
+# 运行 ETL
 python -m ai_etl run                                    # all enabled sources
 python -m ai_etl run --source-type table                # table only
 python -m ai_etl run --source-type volume               # volume only
 python -m ai_etl run --provider zhipuai --model glm-4-flash  # override provider
+
+# 任务管理
 python -m ai_etl status <batch_id>                      # check batch status
 python -m ai_etl resume <batch_id>                      # resume interrupted job
 ```
@@ -392,6 +401,7 @@ ai_etl/
 ├── ai_etl/
 │   ├── __main__.py           # CLI (python -m ai_etl)
 │   ├── config.py             # Config loader (.env + YAML)
+│   ├── planner.py            # AI plan: analyze data, recommend config
 │   ├── media_types.py        # Media type detection + content builders
 │   ├── result_keys.py        # Field constants + key encoding
 │   ├── lakehouse.py          # Lakehouse read/write + Volume ops

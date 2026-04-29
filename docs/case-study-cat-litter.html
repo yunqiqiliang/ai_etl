@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Case Study: 猫砂竞品主数据 AI 自动生成</title>
+<style>
+:root{--p:#1a56db;--pl:#e8f0fe;--t:#1f2937;--t2:#4b5563;--bg:#fff;--bga:#f8fafc;--bd:#e2e8f0;--ok:#059669;--okl:#d1fae5;--r:10px}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Noto Sans SC",sans-serif;color:var(--t);line-height:1.75;background:var(--bg)}
+.c{max-width:1000px;margin:0 auto;padding:0 32px}
+header{background:linear-gradient(135deg,#1e3a5f,#1a56db 60%,#3b82f6);color:#fff;padding:56px 0 48px;position:relative;overflow:hidden}
+header::after{content:"";position:absolute;bottom:-2px;left:0;right:0;height:40px;background:var(--bg);clip-path:ellipse(55% 100% at 50% 100%)}
+header h1{font-size:30px;font-weight:800;margin:16px 0 10px}
+header .sub{font-size:16px;opacity:.88;max-width:700px}
+.top{display:flex;align-items:center;gap:14px}
+.badge{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);border-radius:24px;padding:5px 16px;font-size:13px}
+section{padding:52px 0}
+section.alt{background:var(--bga)}
+h2{font-size:23px;font-weight:700;margin-bottom:6px}
+.desc{font-size:15px;color:var(--t2);margin-bottom:22px;max-width:720px}
+h3{font-size:17px;font-weight:600;margin:24px 0 8px}
+.cg{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin:18px 0}
+.cd{background:var(--bg);border:1px solid var(--bd);border-radius:var(--r);padding:20px}
+.cd .n{font-size:26px;font-weight:800;color:var(--p)}
+.cd h4{font-size:14px;font-weight:600;margin:4px 0 2px}
+.cd p{font-size:12px;color:var(--t2)}
+.tw{overflow-x:auto;margin:12px 0;border-radius:var(--r);border:1px solid var(--bd)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{background:var(--bga);font-weight:600;padding:9px 12px;text-align:left;border-bottom:2px solid var(--bd);white-space:nowrap}
+td{padding:8px 12px;border-bottom:1px solid #f1f5f9}
+tr:last-child td{border-bottom:none}
+code{background:#f1f5f9;padding:2px 5px;border-radius:4px;font-size:12px;font-family:"SF Mono",monospace}
+pre{background:#0f172a;color:#e2e8f0;padding:14px 18px;border-radius:var(--r);overflow-x:auto;margin:10px 0;font-size:12px;line-height:1.6}
+.co{border-radius:var(--r);padding:14px 18px;margin:16px 0;display:flex;gap:10px;font-size:13px;line-height:1.6}
+.co.i{background:var(--pl);border:1px solid #bfdbfe}
+.co.s{background:var(--okl);border:1px solid #a7f3d0}
+.co.w{background:#fef3c7;border:1px solid #fde68a}
+.sg{counter-reset:s;margin:20px 0}
+.st{display:flex;gap:16px;margin-bottom:20px;padding:18px;background:var(--bg);border:1px solid var(--bd);border-radius:var(--r)}
+.st .sn{flex-shrink:0;width:32px;height:32px;background:var(--p);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;counter-increment:s}
+.st .sn::after{content:counter(s)}
+.st h4{font-size:14px;font-weight:600;margin-bottom:3px}
+.st p,.st li{font-size:13px;color:var(--t2)}
+.dg{margin:20px 0;text-align:center;overflow-x:auto}
+.dg svg{max-width:100%;height:auto}
+.vf{display:inline-flex;align-items:center;gap:5px;background:var(--okl);color:#065f46;border:1px solid #a7f3d0;border-radius:16px;padding:3px 10px;font-size:12px;font-weight:600}
+.vf::before{content:"✓";background:var(--ok);color:#fff;width:16px;height:16px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:10px}
+footer{background:#0f172a;color:#94a3b8;padding:32px 0;text-align:center;font-size:13px}
+footer a{color:#60a5fa;text-decoration:none}
+</style>
+</head>
+<body>
+
+<header>
+<div class="c">
+  <div class="top">
+    <img src="https://www.yunqi.tech/_next/static/media/logo.81fa8862.png" alt="云器科技" style="height:22px">
+    <span class="badge">AI ETL Reference Case Study</span>
+  </div>
+  <h1>猫砂竞品主数据 AI 自动生成</h1>
+  <p class="sub">从 5 个电商平台的 Excel 销售数据出发，通过云器 Lakehouse + LLM Batch 推理，自动提取 862 条竞品商品的结构化主数据（品牌、类目、规格、配比），生成与人工标注一致的标准主数据表。</p>
+</div>
+</header>
+
+<!-- 业务背景 -->
+<section>
+<div class="c">
+  <h2>📋 业务背景</h2>
+  <p class="desc">某宠物用品品牌（福丸）需要建立猫砂品类的竞品价盘数据库，覆盖抖音、天猫、天猫超市、京东自营、京东POP 五个电商平台。</p>
+  <div class="cg">
+    <div class="cd"><div class="n">5</div><h4>电商平台</h4><p>抖音/天猫/天猫超市/京东自营/京东POP</p></div>
+    <div class="cd"><div class="n">862</div><h4>竞品商品</h4><p>来自各平台的猫砂类商品</p></div>
+    <div class="cd"><div class="n">46</div><h4>标杆主数据</h4><p>福丸品牌人工标注的SKU主数据</p></div>
+    <div class="cd"><div class="n">16</div><h4>类目编码</h4><p>四级类目体系(混合/植物/矿砂等)</p></div>
+  </div>
+  <h3>核心挑战</h3>
+  <p>各平台的商品名称是营销标题（如"福丸12包栀子花猫砂木薯猫砂混合豆腐猫砂去味除臭2.5kg"），需要从中提取结构化的产品主数据：品牌、类目、标准化产品名、配比、规格。人工处理 862 条数据耗时且不一致。</p>
+</div>
+</section>
+
+<!-- 流程总览 SVG -->
+<section class="alt">
+<div class="c">
+  <h2>🔄 端到端流程</h2>
+  <div class="dg">
+    <svg viewBox="0 0 860 320" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif">
+      <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#94a3b8"/></marker></defs>
+      <rect width="860" height="320" rx="12" fill="#f8fafc" stroke="#e2e8f0"/>
+      <rect x="0" y="0" width="860" height="36" rx="12" fill="#1a56db"/><rect x="0" y="16" width="860" height="20" fill="#1a56db"/>
+      <text x="430" y="24" text-anchor="middle" fill="#fff" font-size="13" font-weight="700">猫砂竞品主数据 AI 生成流程</text>
+      <!-- Step 1 -->
+      <rect x="20" y="56" width="160" height="60" rx="8" fill="#fff" stroke="#1a56db" stroke-width="1.2"/>
+      <text x="100" y="78" text-anchor="middle" fill="#1a56db" font-size="12" font-weight="600">① Excel 导入</text>
+      <text x="100" y="96" text-anchor="middle" fill="#6b7280" font-size="10">9 sheets → 7 张表</text>
+      <!-- Step 2 -->
+      <rect x="220" y="56" width="160" height="60" rx="8" fill="#fff" stroke="#1a56db" stroke-width="1.2"/>
+      <text x="300" y="78" text-anchor="middle" fill="#1a56db" font-size="12" font-weight="600">② AI Plan</text>
+      <text x="300" y="96" text-anchor="middle" fill="#6b7280" font-size="10">采样分析 → 推荐配置</text>
+      <!-- Step 3 -->
+      <rect x="420" y="56" width="160" height="60" rx="8" fill="#fff" stroke="#f59e0b" stroke-width="1.2"/>
+      <text x="500" y="78" text-anchor="middle" fill="#92400e" font-size="12" font-weight="600">③ Batch 推理</text>
+      <text x="500" y="96" text-anchor="middle" fill="#6b7280" font-size="10">5 渠道 × 862 条并行</text>
+      <!-- Step 4 -->
+      <rect x="620" y="56" width="220" height="60" rx="8" fill="#fff" stroke="#059669" stroke-width="1.2"/>
+      <text x="730" y="78" text-anchor="middle" fill="#065f46" font-size="12" font-weight="600">④ 合并去重 → 主数据表</text>
+      <text x="730" y="96" text-anchor="middle" fill="#6b7280" font-size="10">862 行结构化主数据</text>
+      <!-- Arrows -->
+      <line x1="180" y1="86" x2="218" y2="86" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#a)"/>
+      <line x1="380" y1="86" x2="418" y2="86" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#a)"/>
+      <line x1="580" y1="86" x2="618" y2="86" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#a)"/>
+      <!-- Detail boxes -->
+      <rect x="20" y="140" width="160" height="160" rx="8" fill="#fff" stroke="#e2e8f0"/>
+      <text x="30" y="160" fill="#1a56db" font-size="11" font-weight="600">数据源表</text>
+      <text x="30" y="178" fill="#6b7280" font-size="10">product_master (46)</text>
+      <text x="30" y="194" fill="#6b7280" font-size="10">sales_douyin (44)</text>
+      <text x="30" y="210" fill="#6b7280" font-size="10">sales_tmall (50)</text>
+      <text x="30" y="226" fill="#6b7280" font-size="10">sales_tmall_chaoshi (368)</text>
+      <text x="30" y="242" fill="#6b7280" font-size="10">sales_jd_self (200)</text>
+      <text x="30" y="258" fill="#6b7280" font-size="10">sales_jd_pop (200)</text>
+      <text x="30" y="274" fill="#6b7280" font-size="10">category_mapping (114)</text>
+      <rect x="220" y="140" width="160" height="160" rx="8" fill="#fff" stroke="#e2e8f0"/>
+      <text x="230" y="160" fill="#1a56db" font-size="11" font-weight="600">Prompt 设计</text>
+      <text x="230" y="178" fill="#6b7280" font-size="10">16 个类目编码体系</text>
+      <text x="230" y="194" fill="#6b7280" font-size="10">3 个 few-shot 示例</text>
+      <text x="230" y="210" fill="#6b7280" font-size="10">JSON 结构化输出</text>
+      <text x="230" y="226" fill="#6b7280" font-size="10">temperature=0.1</text>
+      <text x="230" y="242" fill="#6b7280" font-size="10">model: qwen3-max</text>
+      <rect x="420" y="140" width="160" height="160" rx="8" fill="#fff" stroke="#e2e8f0"/>
+      <text x="430" y="160" fill="#92400e" font-size="11" font-weight="600">Batch 任务</text>
+      <text x="430" y="178" fill="#6b7280" font-size="10">5 个 batch 并行提交</text>
+      <text x="430" y="194" fill="#6b7280" font-size="10">862 条请求</text>
+      <text x="430" y="210" fill="#6b7280" font-size="10">50% 成本</text>
+      <text x="430" y="226" fill="#6b7280" font-size="10">862/862 成功</text>
+      <text x="430" y="242" fill="#6b7280" font-size="10">0 失败</text>
+      <rect x="620" y="140" width="220" height="160" rx="8" fill="#fff" stroke="#e2e8f0"/>
+      <text x="630" y="160" fill="#065f46" font-size="11" font-weight="600">输出表结构</text>
+      <text x="630" y="178" fill="#6b7280" font-size="10">品牌 | 一级类目 | 二级类目</text>
+      <text x="630" y="194" fill="#6b7280" font-size="10">三级类目 | 四级类目 | 产品名称</text>
+      <text x="630" y="210" fill="#6b7280" font-size="10">主数据编码 | 规格 | 配比</text>
+      <text x="630" y="230" fill="#94a3b8" font-size="10">+ 溯源: 平台 | 源主键 | 源名称</text>
+      <text x="630" y="246" fill="#94a3b8" font-size="10">+ 审计: 类目编码 | ai_raw</text>
+    </svg>
+  </div>
+</div>
+</section>
+
+<!-- Step 1: Excel 导入 -->
+<section>
+<div class="c">
+  <h2>① Excel 数据导入云器 Lakehouse</h2>
+  <p class="desc">原始数据是一个包含 9 个 sheet 的 Excel 文件，涵盖产品主数据、5 个平台的销售数据和类目映射表。</p>
+
+  <h3>数据源概览</h3>
+  <div class="tw">
+  <table>
+    <tr><th>Sheet</th><th>导入表名</th><th>行数</th><th>列数</th><th>说明</th></tr>
+    <tr><td>福丸竞品主数据</td><td><code>product_master</code></td><td>46</td><td>9</td><td>福丸品牌 SKU 主数据（标杆数据）</td></tr>
+    <tr><td>猫砂抖音</td><td><code>sales_douyin</code></td><td>44</td><td>19</td><td>抖音平台销售数据</td></tr>
+    <tr><td>猫砂天猫</td><td><code>sales_tmall</code></td><td>50</td><td>7</td><td>天猫平台销售数据</td></tr>
+    <tr><td>猫砂天猫超市</td><td><code>sales_tmall_chaoshi</code></td><td>368</td><td>17</td><td>天猫超市销售数据</td></tr>
+    <tr><td>猫砂京东自营</td><td><code>sales_jd_self</code></td><td>200</td><td>17</td><td>京东自营销售排行</td></tr>
+    <tr><td>猫砂京东pop</td><td><code>sales_jd_pop</code></td><td>200</td><td>17</td><td>京东POP销售排行</td></tr>
+    <tr><td>类目表</td><td><code>category_mapping</code></td><td>114</td><td>13</td><td>四级类目编码映射</td></tr>
+  </table>
+  </div>
+
+  <h3>导入方式</h3>
+  <p>使用 Python <code>openpyxl</code> 读取 Excel + ZettaPark SDK 写入 Lakehouse，自动处理列名清洗、空行过滤、类型统一（全部 STRING）。</p>
+  <pre>from ai_etl.lakehouse import LakehouseClient
+lh = LakehouseClient(config=cfg)
+lh.session.sql("CREATE SCHEMA IF NOT EXISTS cat_litter").collect()
+# 每个 sheet → 一张表，自动建表 + 写入
+df = lh.session.create_dataframe(data_rows, schema=schema)
+df.write.save_as_table("cat_litter.sales_jd_self", mode="append")</pre>
+
+  <div class="co i"><span>💡</span><span>所有表和字段都添加了中文注释（<code>ALTER TABLE SET COMMENT</code> / <code>ALTER COLUMN COMMENT</code>），方便在 Lakehouse Studio 中浏览。</span></div>
+</div>
+</section>
+
+<!-- Step 2: Prompt 设计 -->
+<section class="alt">
+<div class="c">
+  <h2>② Prompt 设计：类目体系 + Few-shot 示例</h2>
+  <p class="desc">AI 需要从电商营销标题中提取结构化主数据。Prompt 设计是质量的关键。</p>
+
+  <h3>类目体系（嵌入 system_prompt）</h3>
+  <p>从 <code>category_mapping</code> 表提取 16 个猫砂类目编码，作为 AI 的"选择题选项"：</p>
+  <div class="tw">
+  <table>
+    <tr><th>编码</th><th>三级类目</th><th>四级类目</th><th>典型成分</th></tr>
+    <tr><td>HB-TFCL</td><td>混合猫砂</td><td>豆腐膨润土猫砂</td><td>豆腐+膨润土</td></tr>
+    <tr><td>HB-TTCL</td><td>混合猫砂</td><td>木薯豆腐膨润土猫砂</td><td>木薯+豆腐+膨润土</td></tr>
+    <tr><td>PB-TF</td><td>植物猫砂</td><td>豆腐猫砂</td><td>纯豆腐</td></tr>
+    <tr><td>PB-TP</td><td>植物猫砂</td><td>木薯猫砂</td><td>纯木薯</td></tr>
+    <tr><td>CL-CL</td><td>膨润土猫砂</td><td>膨润土猫砂</td><td>纯膨润土</td></tr>
+    <tr><td>MN-MN</td><td>矿砂</td><td>矿砂</td><td>纯矿砂</td></tr>
+    <tr><td colspan="4" style="color:#9ca3af">...共 16 个类目（含组合装、除臭颗粒、其他）</td></tr>
+  </table>
+  </div>
+
+  <h3>Few-shot 示例（福丸标杆数据）</h3>
+  <p>从 <code>product_master</code> 中选取 3 个不同品牌/类目的示例，教 AI "标准答案长什么样"：</p>
+  <pre>输入: "自然空气白茶豆腐膨润土混合猫砂"
+输出: {"品牌":"福丸","三级类目":"混合猫砂","四级类目":"豆腐膨润土猫砂",
+       "类目编码":"HB-TFCL","配比":"70%豆腐砂+30%膨润土砂","规格":"2.5"}
+
+输入: "pidan混合猫砂 豆腐膨润土木薯60%:30%:10%混合"
+输出: {"品牌":"pidan","三级类目":"混合猫砂","四级类目":"木薯豆腐膨润土猫砂",
+       "类目编码":"HB-TTCL","配比":"60%豆腐+30%膨润土+10%木薯","规格":""}
+
+输入: "许翠花 经典原味纯植物猫砂2.5kg*4包木薯猫砂不粘底强吸"
+输出: {"品牌":"许翠花","三级类目":"植物猫砂","四级类目":"木薯猫砂",
+       "类目编码":"PB-TP","配比":"100%木薯","规格":"2.5"}</pre>
+
+  <h3>推理参数</h3>
+  <div class="tw">
+  <table>
+    <tr><th>参数</th><th>值</th><th>理由</th></tr>
+    <tr><td>model</td><td><code>qwen3-max</code></td><td>复杂语义理解任务需要强模型</td></tr>
+    <tr><td>temperature</td><td><code>0.1</code></td><td>低随机性，确保 JSON 输出稳定</td></tr>
+    <tr><td>enable_thinking</td><td><code>false</code></td><td>不需要思考链，节省 token</td></tr>
+    <tr><td>user_prompt</td><td><code>{text}</code> 模板</td><td>每行商品名称替换到模板中</td></tr>
+  </table>
+  </div>
+</div>
+</section>
+
+<!-- Step 3: Batch 推理 -->
+<section>
+<div class="c">
+  <h2>③ 5 渠道并行 Batch 推理</h2>
+  <p class="desc">为每个渠道创建独立的 config.yaml，通过 AI ETL pipeline 提交 batch 任务。5 个 batch 在 DashScope 服务端并行处理。</p>
+
+  <h3>配置文件结构</h3>
+  <pre>configs/
+├── cat_litter_douyin.yaml        # 抖音 (44 条)
+├── cat_litter_tmall.yaml         # 天猫 (50 条)
+├── cat_litter_tmall_chaoshi.yaml # 天猫超市 (368 条)
+├── cat_litter_jd_self.yaml       # 京东自营 (200 条)
+└── cat_litter_jd_pop.yaml        # 京东POP (200 条)</pre>
+
+  <h3>提交命令</h3>
+  <pre># 方式一：逐个提交
+PYTHONPATH=. python -c "
+from ai_etl.config import Config
+from ai_etl.pipeline import AIETLPipeline
+cfg = Config(config_path=Path('configs/cat_litter_jd_self.yaml'))
+pipeline = AIETLPipeline(config=cfg)
+pipeline.run()
+pipeline.close()
+"
+
+# 方式二：批量提交（只提交不等待）
+for name in ['douyin', 'tmall', 'tmall_chaoshi', 'jd_self', 'jd_pop']:
+    cfg = Config(config_path=Path(f'configs/cat_litter_{name}.yaml'))
+    pipeline = AIETLPipeline(config=cfg)
+    job = pipeline._submit_table()
+    print(f'{name}: {job.batch_id}')
+    pipeline.close()</pre>
+
+  <h3>执行结果</h3>
+  <div class="tw">
+  <table>
+    <tr><th>渠道</th><th>请求数</th><th>状态</th><th>成功</th><th>失败</th></tr>
+    <tr><td>京东自营</td><td>200</td><td><span class="vf">completed</span></td><td>200</td><td>0</td></tr>
+    <tr><td>京东POP</td><td>200</td><td><span class="vf">completed</span></td><td>200</td><td>0</td></tr>
+    <tr><td>天猫超市</td><td>368</td><td><span class="vf">completed</span></td><td>368</td><td>0</td></tr>
+    <tr><td>抖音</td><td>44</td><td><span class="vf">completed</span></td><td>44</td><td>0</td></tr>
+    <tr><td>天猫</td><td>50</td><td><span class="vf">completed</span></td><td>50</td><td>0</td></tr>
+    <tr><td style="font-weight:600">合计</td><td style="font-weight:600">862</td><td></td><td style="font-weight:600">862</td><td style="font-weight:600">0</td></tr>
+  </table>
+  </div>
+  <div class="co s"><span>✅</span><span><strong>862/862 全部成功，0 失败。</strong>Batch API 的服务端重试机制确保了 100% 完成率。</span></div>
+</div>
+</section>
+
+<!-- Step 4: 合并去重 -->
+<section class="alt">
+<div class="c">
+  <h2>④ 合并去重 → 生成统一主数据表</h2>
+  <p class="desc">5 个渠道的 AI 结果通过 SQL 合并、去重、JSON 解析，生成与 product_master 结构一致的竞品主数据表。</p>
+
+  <h3>合并 SQL 逻辑</h3>
+  <pre>CREATE TABLE cat_litter.competitor_product_master AS
+WITH all_data AS (
+    -- 5 个渠道 UNION ALL，JOIN 回源表取原始商品名称
+    SELECT '京东自营' AS platform, a.商品编号 AS source_key,
+           b.商品名称 AS source_name, a.ai_result
+    FROM cat_litter.jd_self_product_master a
+    LEFT JOIN cat_litter.sales_jd_self b ON a.商品编号 = b.商品编号
+    UNION ALL ...
+),
+deduped AS (
+    -- 同平台同 source_key 去重
+    SELECT *, ROW_NUMBER() OVER (PARTITION BY platform, source_key) AS rn
+    FROM all_data
+),
+with_seq AS (
+    -- 按品牌+类目分组编号，用于生成主数据编码
+    SELECT *, ROW_NUMBER() OVER (PARTITION BY brand, cat_code ORDER BY platform) AS seq
+    FROM parsed WHERE rn = 1
+)
+SELECT
+    -- 与 product_master 对齐的 9 列
+    brand AS 品牌, '宠物用品' AS 一级类目, '猫砂' AS 二级类目,
+    cat3 AS 三级类目, cat4 AS 四级类目, pname AS 产品名称,
+    -- 自动生成主数据编码：品牌前2字母-PS-CL-类目编码-序号-规格克数
+    CONCAT(UPPER(SUBSTR(brand,1,2)),'-PS-CL-',cat_code,'-',
+           LPAD(seq,4,'0'),'-',CAST(spec*1000 AS INT)) AS 主数据,
+    spec AS 规格, formula AS 配比,
+    -- 额外溯源字段
+    platform AS 数据来源平台, source_key AS 源数据主键,
+    source_name AS 源数据商品名称, cat_code AS 类目编码, ai_result AS ai_raw
+FROM with_seq;</pre>
+
+  <h3>输出表结构</h3>
+  <div class="tw">
+  <table>
+    <tr><th>列名</th><th>来源</th><th>说明</th></tr>
+    <tr style="background:#f0fdf4"><td><strong>品牌</strong></td><td>AI 提取</td><td>品牌名称</td></tr>
+    <tr style="background:#f0fdf4"><td><strong>一级类目</strong></td><td>固定值</td><td>宠物用品</td></tr>
+    <tr style="background:#f0fdf4"><td><strong>二级类目</strong></td><td>固定值</td><td>猫砂</td></tr>
+    <tr style="background:#f0fdf4"><td><strong>三级类目</strong></td><td>AI 提取</td><td>如：混合猫砂、植物猫砂</td></tr>
+    <tr style="background:#f0fdf4"><td><strong>四级类目</strong></td><td>AI 提取</td><td>如：豆腐膨润土猫砂</td></tr>
+    <tr style="background:#f0fdf4"><td><strong>产品名称</strong></td><td>AI 标准化</td><td>去除营销词的标准产品名</td></tr>
+    <tr style="background:#f0fdf4"><td><strong>主数据</strong></td><td>规则生成</td><td>编码如 PD-PS-CL-HB-TFCL-0001-3600</td></tr>
+    <tr style="background:#f0fdf4"><td><strong>规格</strong></td><td>AI 提取</td><td>数字(kg)</td></tr>
+    <tr style="background:#f0fdf4"><td><strong>配比</strong></td><td>AI 提取</td><td>如：70%豆腐砂+30%膨润土砂</td></tr>
+    <tr><td>数据来源平台</td><td>系统</td><td>抖音/天猫/京东等</td></tr>
+    <tr><td>源数据主键</td><td>系统</td><td>源表中的商品编号/ID</td></tr>
+    <tr><td>源数据商品名称</td><td>JOIN 源表</td><td>原始电商营销标题</td></tr>
+    <tr><td>类目编码</td><td>AI 提取</td><td>如 HB-TFCL</td></tr>
+    <tr><td>ai_raw</td><td>AI 原始</td><td>完整 JSON 响应（审计用）</td></tr>
+  </table>
+  </div>
+  <p style="font-size:13px;color:#6b7280">绿色行 = 与 product_master 完全一致的 9 列；白色行 = 额外溯源/审计字段。</p>
+</div>
+</section>
+
+<!-- 结果验证 -->
+<section>
+<div class="c">
+  <h2>⑤ 结果验证</h2>
+
+  <h3>结构对比：人工标注 vs AI 生成</h3>
+  <div class="tw">
+  <table>
+    <tr><th></th><th>product_master（人工）</th><th>competitor_product_master（AI）</th></tr>
+    <tr><td>品牌</td><td>福丸</td><td>pidan / 许翠花 / 网易严选 / 凯锐思 ...</td></tr>
+    <tr><td>三级/四级</td><td>混合猫砂/豆腐膨润土猫砂</td><td>混合猫砂/豆腐膨润土猫砂 ✅</td></tr>
+    <tr><td>产品名称</td><td>自然空气白茶豆腐膨润土混合猫砂</td><td>pidan经典混合猫砂 ✅</td></tr>
+    <tr><td>主数据编码</td><td>FW-PS-CL-HB-TFCL-0001-2500</td><td>PD-PS-CL-HB-TFCL-0001-3600 ✅</td></tr>
+    <tr><td>规格</td><td>2.5</td><td>3.6 ✅</td></tr>
+    <tr><td>配比</td><td>70%豆腐砂+30%膨润土砂</td><td>70%豆腐+30%膨润土 ✅</td></tr>
+  </table>
+  </div>
+
+  <h3>品牌分布（Top 10）</h3>
+  <div class="tw">
+  <table>
+    <tr><th>品牌</th><th>商品数</th><th>品牌</th><th>商品数</th></tr>
+    <tr><td>福丸</td><td>148</td><td>城市理享</td><td>22</td></tr>
+    <tr><td>pidan</td><td>43</td><td>名创优品</td><td>21</td></tr>
+    <tr><td>网易严选</td><td>35</td><td>囧宝</td><td>20</td></tr>
+    <tr><td>洁客</td><td>26</td><td>艾禾美</td><td>20</td></tr>
+    <tr><td>凯锐思</td><td>26</td><td>许翠花</td><td>22</td></tr>
+  </table>
+  </div>
+
+  <h3>类目分布</h3>
+  <div class="tw">
+  <table>
+    <tr><th>类目</th><th>编码</th><th>数量</th><th>占比</th></tr>
+    <tr><td>混合猫砂/豆腐膨润土</td><td>HB-TFCL</td><td>170</td><td>20%</td></tr>
+    <tr><td>植物猫砂/豆腐</td><td>PB-TF</td><td>135</td><td>16%</td></tr>
+    <tr><td>植物猫砂/木薯</td><td>PB-TP</td><td>111</td><td>13%</td></tr>
+    <tr><td>膨润土猫砂</td><td>CL-CL</td><td>93</td><td>11%</td></tr>
+    <tr><td>矿砂</td><td>MN-MN</td><td>89</td><td>10%</td></tr>
+    <tr><td>混合猫砂/其他</td><td>HB-OCL</td><td>82</td><td>10%</td></tr>
+    <tr><td>其他类目</td><td>...</td><td>182</td><td>21%</td></tr>
+  </table>
+  </div>
+
+  <h3>数据质量</h3>
+  <div class="tw">
+  <table>
+    <tr><th>指标</th><th>数值</th><th>说明</th></tr>
+    <tr><td>总行数</td><td>862</td><td>去重后</td></tr>
+    <tr><td>品牌识别率</td><td>98.4%</td><td>14 条空品牌（天猫超市部分白牌商品）</td></tr>
+    <tr><td>类目匹配率</td><td>100%</td><td>全部匹配到 16 个标准类目之一</td></tr>
+    <tr><td>规格提取率</td><td>73%</td><td>233 条无法从商品名称推断规格</td></tr>
+    <tr><td>配比提取率</td><td>95.7%</td><td>37 条商品名称中无成分信息</td></tr>
+    <tr><td>Batch 成功率</td><td>100%</td><td>862/862 全部成功</td></tr>
+  </table>
+  </div>
+</div>
+</section>
+
+<!-- 关键经验 -->
+<section class="alt">
+<div class="c">
+  <h2>💡 关键经验</h2>
+  <div class="cg" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
+    <div class="cd">
+      <h4>1. Few-shot 示例决定质量</h4>
+      <p>福丸的 46 条人工标注数据不是"要处理的数据"，而是"教 AI 怎么做的示例"。3 个精选的 few-shot 示例（覆盖不同品牌和类目）比 10 个同质示例效果更好。</p>
+    </div>
+    <div class="cd">
+      <h4>2. 类目体系必须封闭</h4>
+      <p>把 16 个类目编码作为"选择题"嵌入 prompt，而不是让 AI 自由发挥。这确保了 100% 的类目匹配率，且与 category_mapping 表完全对齐。</p>
+    </div>
+    <div class="cd">
+      <h4>3. 低 temperature 保证结构化输出</h4>
+      <p>temperature=0.1 确保 AI 输出稳定的 JSON 格式。temperature 过高会导致 JSON 格式不一致或添加多余的解释文字。</p>
+    </div>
+    <div class="cd">
+      <h4>4. 并行提交节省时间</h4>
+      <p>5 个渠道的 batch 同时提交，在 DashScope 服务端并行处理。总等待时间 = 最慢的那个渠道，而不是 5 个渠道之和。</p>
+    </div>
+    <div class="cd">
+      <h4>5. 溯源字段不可少</h4>
+      <p>保留 platform、source_key、source_name、ai_raw 等溯源字段，方便后续人工抽检、问题排查和数据回溯。</p>
+    </div>
+    <div class="cd">
+      <h4>6. 规格提取是短板</h4>
+      <p>27% 的商品无法从名称中推断规格（名称中不含重量信息）。后续可结合商品详情页或价格信息补充。</p>
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- 复现指南 -->
+<section>
+<div class="c">
+  <h2>🔧 复现指南</h2>
+  <p class="desc">按以下步骤可以在你自己的数据上复现整个流程。</p>
+  <div class="sg">
+    <div class="st"><div class="sn"></div><div class="sb">
+      <h4>准备数据</h4>
+      <p>将 Excel 数据导入云器 Lakehouse（可用 Lakehouse Studio 上传，或用 Python 脚本）。确保有一张"标杆主数据"表作为 few-shot 示例。</p>
+    </div></div>
+    <div class="st"><div class="sn"></div><div class="sb">
+      <h4>安装 AI ETL</h4>
+      <pre>git clone https://github.com/yunqiqiliang/ai_etl.git
+cd ai_etl && pip install -e .</pre>
+    </div></div>
+    <div class="st"><div class="sn"></div><div class="sb">
+      <h4>用 plan 命令生成配置</h4>
+      <pre>python -m ai_etl plan --table your_schema.your_table --hint "提取品牌、类目、规格"</pre>
+      <p>AI 会采样数据并推荐 model、prompt、参数。将输出的 config 片段保存为 yaml 文件。</p>
+    </div></div>
+    <div class="st"><div class="sn"></div><div class="sb">
+      <h4>提交 Batch 推理</h4>
+      <pre>python -c "
+from ai_etl.config import Config
+from ai_etl.pipeline import AIETLPipeline
+cfg = Config(config_path=Path('configs/your_config.yaml'))
+AIETLPipeline(config=cfg).run()
+"</pre>
+    </div></div>
+    <div class="st"><div class="sn"></div><div class="sb">
+      <h4>合并去重生成主数据表</h4>
+      <p>用 SQL 从 AI 结果表中解析 JSON、去重、生成主数据编码，创建最终的主数据表。参考 <code>scripts/rebuild_competitor_master_v2.py</code>。</p>
+    </div></div>
+  </div>
+</div>
+</section>
+
+<footer>
+<div class="c">
+  <p style="color:#e2e8f0;font-size:15px;font-weight:600;margin-bottom:10px">猫砂竞品主数据 AI 自动生成 — Case Study</p>
+  <p>开源项目：<a href="https://github.com/yunqiqiliang/ai_etl">github.com/yunqiqiliang/ai_etl</a> · 云器 Lakehouse：<a href="https://www.yunqi.tech">yunqi.tech</a></p>
+  <p style="margin-top:10px;font-size:11px;color:#64748b">本案例基于真实数据验证：5 个电商平台、862 条竞品商品、qwen3-max 模型、Batch API 50% 成本、100% 成功率。</p>
+</div>
+</footer>
+
+</body>
+</html>

@@ -80,6 +80,23 @@ class DashScopeProvider(BatchProvider):
         content = retry_api_call(self._client.files.content, batch.error_file_id)
         return content.text
 
+    def download_results_and_errors(self, batch_id: str):
+        """一次 retrieve 同时获取结果和错误文件内容，减少 API 调用次数。
+
+        Returns:
+            (result_text, error_text): 结果 JSONL 文本和错误 JSONL 文本（无则为空字符串/None）。
+        """
+        batch = retry_api_call(self._client.batches.retrieve, batch_id)
+        result_text = ""
+        error_text = None
+        if batch.output_file_id:
+            content = retry_api_call(self._client.files.content, batch.output_file_id)
+            result_text = content.text
+        if batch.error_file_id:
+            content = retry_api_call(self._client.files.content, batch.error_file_id)
+            error_text = content.text
+        return result_text, error_text
+
     def cancel_batch(self, batch_id: str) -> str:
         batch = retry_api_call(self._client.batches.cancel, batch_id)
         return batch.status

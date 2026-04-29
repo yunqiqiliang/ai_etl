@@ -272,12 +272,12 @@ Expected result:
 | 1001 | This product features... | qwen3.5-flash | 156 | 2026-04-25T12:30:00+08:00 |
 | 1002 | A premium quality... | qwen3.5-flash | 142 | 2026-04-25T12:30:00+08:00 |
 
-**Verify incremental processing** (Volume mode only) — run the pipeline again, it should skip already-processed files:
+**Verify incremental processing** — run the pipeline again, it should skip already-processed rows/files:
 
 ```bash
 python -m ai_etl run
+# Expected for Table: "读取完成（增量）: 0 行新数据" / source rows already in target table are skipped
 # Expected for Volume: "增量过滤: 3 → 0 个新文件" / "没有新文件需要处理"
-# Note: Table mode re-processes all rows each run (use filter/batch_size to control scope)
 ```
 
 ### Troubleshooting
@@ -387,7 +387,7 @@ Both modes auto-create target tables with these metadata columns:
 | `finish_reason` | STRING | Model stop reason |
 | `response_id` | STRING | Server request ID |
 | `source_text` | STRING | Original input text / user prompt |
-| `raw_response` | STRING | Full response body JSON |
+| `raw_response` | STRING | Full response body JSON (disable with `etl.target.include_raw_response: false` to save storage) |
 
 Volume mode adds: `file_path` (STRING), `volume_name` (STRING), `file_size` (BIGINT).
 
@@ -411,6 +411,8 @@ Volume mode adds: `file_path` (STRING), `volume_name` (STRING), `file_size` (BIG
 | No source enabled | Clear error with config path hint |
 | Dual source enabled | Parallel batch submission, unified polling |
 | Table name without schema prefix | Auto-qualify with clickzetta.schema |
+| Duplicate batch_id write | Idempotent guard — skip if batch_id already in target table |
+| Presigned URL batch SQL fails | Auto-fallback to per-file URL generation |
 
 ## Project Structure
 
@@ -427,7 +429,7 @@ ai_etl/
 │   ├── lakehouse.py          # Lakehouse read/write + Volume ops
 │   ├── pipeline.py           # ETL orchestration (table + volume)
 │   └── providers/            # DashScope + ZhipuAI batch providers
-└── tests/                    # 61 unit tests
+└── tests/                    # 73 unit tests
 ```
 
 ## Appendix: Batch Model Support Details

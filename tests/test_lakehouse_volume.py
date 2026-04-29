@@ -83,7 +83,8 @@ def test_build_multimodal_jsonl_image():
 
         cid = encode_custom_id([rp])
         assert cid.startswith("req-")
-        assert "photos/cat.jpg" in cid
+        # custom_id 使用 URL encoding，'/' 被编码为 '%2F'
+        assert "photos%2Fcat.jpg" in cid
 
 
 def test_build_multimodal_jsonl_skips_unsupported():

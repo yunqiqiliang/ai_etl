@@ -562,6 +562,17 @@ class Config:
     def etl_target_write_mode(self) -> str:
         return self._get_nested("etl", "target", "write_mode", default="append")
 
+    @property
+    def etl_target_include_raw_response(self) -> bool:
+        """是否将完整 response body 写入 raw_response 列。默认 True（兜底，不丢信息）。
+        
+        设置为 false 可节省存储成本（每行约 500 字节）。
+        """
+        val = self._get_nested("etl", "target", "include_raw_response", default=True)
+        if isinstance(val, bool):
+            return val
+        return str(val).lower() not in ("false", "no", "0")
+
     # ── Target Table Resolution ───────────────────────────────
 
     def _qualify_table_name(self, table: str) -> str:

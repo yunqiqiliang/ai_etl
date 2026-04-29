@@ -148,3 +148,27 @@ def test_custom_id_roundtrip_with_special_chars():
     encoded = encode_custom_id([path])
     decoded = decode_custom_id(encoded)
     assert decoded[0] == path
+
+
+def test_custom_id_roundtrip_with_pipe_in_value():
+    """主键值本身含 '|' 时，encode/decode 应正确 roundtrip（修复分隔符冲突）。"""
+    key1 = "value|with|pipes"
+    key2 = "normal"
+    encoded = encode_custom_id([key1, key2])
+    decoded = decode_custom_id(encoded)
+    assert decoded[0] == key1
+    assert decoded[1] == key2
+
+
+def test_custom_id_roundtrip_url_as_key():
+    """URL 作为主键时（含 '/' 和 '|'），encode/decode 应正确 roundtrip。"""
+    url_key = "https://example.com/path|segment?q=1"
+    encoded = encode_custom_id([url_key])
+    decoded = decode_custom_id(encoded)
+    assert decoded[0] == url_key
+
+
+def test_custom_id_prefix():
+    """custom_id 必须以 'req-' 开头。"""
+    encoded = encode_custom_id(["123"])
+    assert encoded.startswith("req-")

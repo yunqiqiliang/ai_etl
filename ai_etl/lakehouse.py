@@ -101,6 +101,54 @@ class LakehouseClient:
         key_cols = [c.strip() for c in key_columns.split(",")]
         select_cols = key_cols + [text_column]
 
+        # 增量过滤：通过 LEFT JOIN 在 SQL 侧排除目标表已处理的 key，避免全量拉取
+        if target_table:
+            join_cond = " AND ".join(
+                f"s.{col} = t.{col}" for col in key_cols
+            )
+            null_check = " AND ".join(f"t.{key_cols[0]} IS NULL" for _ in [None])
+            select_expr = ", ".join(f"s.{col}" for col in select_cols)
+            sql = (
+                f"SELECT {select_expr} FROM {table} s"
+                f" LEFT JOIN {target_table} t ON {join_cond}"
+                f" WHERE t.{key_cols[0]} IS NULL"
+            )
+            if filter_expr:
+                sql += f" AND ({filter_expr})"
+            if batch_size and batch_size > 0:
+                sql += f" LIMIT {batch_size}"
+            logger.info("读取源表（增量 SQL 过滤）: %s", sql)
+            try:
+                rows = self.session.sql(sql).collect()
+                result = []
+                for row in rows:
+                    record = {}
+                    for col in select_cols:
+                        record[col] = str(row[col]) if row[col] is not None else ""
+                    result.append(record)
+                logger.info("读取完成（增量）: %d 行新数据", len(result))
+                return result
+            except Exception as e:
+                err = str(e)
+                # 目标表不存在时回退到全量读取
+                if "not found" in err.lower() or "does not exist" in err.lower():
+                    if target_table.lower() in err.lower():
+                        logger.debug("目标表 %s 不存在，回退到全量读取", target_table)
+                        # 目标表不存在，走全量路径（下方）
+                    else:
+                        raise LakehouseError(
+                            f"源表 {table} 不存在。请检查 config.yaml 中 etl.sources.table.table 的值，"
+                            f"确认表名和 schema 拼写正确。"
+                        ) from e
+                elif "column" in err.lower() and "not found" in err.lower():
+                    raise LakehouseError(
+                        f"源表 {table} 中找不到指定的列。请检查 key_columns ({key_columns}) "
+                        f"和 text_column ({text_column}) 是否与源表字段名一致。"
+                    ) from e
+                else:
+                    raise LakehouseError(f"读取源表失败: {e}") from e
+
+        # 无目标表时全量读取
         sql = f"SELECT {', '.join(select_cols)} FROM {table}"
         if filter_expr:
             sql += f" WHERE {filter_expr}"
@@ -132,29 +180,6 @@ class LakehouseClient:
             result.append(record)
 
         logger.info("读取完成: %d 行", len(result))
-
-        # 增量过滤：排除目标表中已处理的 key
-        if target_table and result:
-            processed_keys: set = set()
-            try:
-                key_select = ", ".join(key_cols)
-                processed_rows = self.session.sql(
-                    f"SELECT DISTINCT {key_select} FROM {target_table}"
-                ).collect()
-                for r in processed_rows:
-                    key_tuple = tuple(str(r[k]) if r[k] is not None else "" for k in key_cols)
-                    processed_keys.add(key_tuple)
-                logger.info("目标表已处理 %d 个 key", len(processed_keys))
-            except Exception:
-                logger.debug("目标表 %s 不存在或无 key 列，视为无已处理数据", target_table)
-
-            if processed_keys:
-                before = len(result)
-                result = [
-                    row for row in result
-                    if tuple(row.get(k, "") for k in key_cols) not in processed_keys
-                ]
-                logger.info("增量过滤: %d → %d 行新数据", before, len(result))
         return result
 
     # ── Volume 文件发现 ───────────────────────────────────────
@@ -271,28 +296,57 @@ class LakehouseClient:
         if not files:
             return []
 
-        # 确保生成外部可访问的 URL
+        # 确保生成外部可访问的 URL（只需执行一次）
         self.session.sql("SET cz.sql.function.get.presigned.url.force.external=true").collect()
 
         result = []
         skipped = 0
 
-        for f in files:
-            rp = f["relative_path"]
+        # 批量生成预签名 URL：用 VALUES 子查询一次 SQL 生成所有 URL，避免 N 次串行往返
+        # 每批最多 500 个文件，防止 SQL 过长
+        BATCH_CHUNK = 500
+        for chunk_start in range(0, len(files), BATCH_CHUNK):
+            chunk = files[chunk_start: chunk_start + BATCH_CHUNK]
+            # 转义路径中的单引号
+            values_list = ", ".join(
+                f"('{rp.replace(chr(39), chr(39)+chr(39))}')"
+                for rp in (f["relative_path"] for f in chunk)
+            )
+            batch_sql = (
+                f"SELECT t.rp AS relative_path,"
+                f" GET_PRESIGNED_URL({volume_sql_ref}, t.rp, {expiration}) AS url"
+                f" FROM (VALUES {values_list}) AS t(rp)"
+            )
             try:
-                url_rows = self.session.sql(
-                    f"SELECT GET_PRESIGNED_URL({volume_sql_ref}, '{rp}', {expiration}) AS url"
-                ).collect()
-                url = str(url_rows[0]["url"]) if url_rows and url_rows[0]["url"] else None
+                url_rows = self.session.sql(batch_sql).collect()
+                url_map = {
+                    str(r["relative_path"]): str(r["url"])
+                    for r in url_rows
+                    if r["url"]
+                }
             except Exception as e:
-                logger.warning("生成预签名 URL 失败 (%s): %s", rp, e)
-                url = None
+                logger.warning("批量生成预签名 URL 失败，回退到逐个生成: %s", e)
+                url_map = {}
+                for f in chunk:
+                    rp = f["relative_path"]
+                    try:
+                        url_rows = self.session.sql(
+                            f"SELECT GET_PRESIGNED_URL({volume_sql_ref}, '{rp}', {expiration}) AS url"
+                        ).collect()
+                        url = str(url_rows[0]["url"]) if url_rows and url_rows[0]["url"] else None
+                        if url:
+                            url_map[rp] = url
+                    except Exception as e2:
+                        logger.warning("生成预签名 URL 失败 (%s): %s", rp, e2)
 
-            if url:
-                result.append({**f, "presigned_url": url})
-            else:
-                skipped += 1
-                logger.warning("跳过无法生成 URL 的文件: %s", rp)
+            for f in chunk:
+                rp = f["relative_path"]
+                url = url_map.get(rp)
+                if url:
+                    result.append({**f, "presigned_url": url})
+                else:
+                    skipped += 1
+                    logger.warning("跳过无法生成 URL 的文件: %s", rp)
 
         if skipped:
             logger.warning("共 %d 个文件无法生成预签名 URL", skipped)
@@ -328,71 +382,77 @@ class LakehouseClient:
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        lines = []
         skipped_unsupported = 0
         skipped_oversized = 0
+        line_count = 0
+        total_size = 0
+        max_size = 100 * 1024 * 1024  # 100 MB
 
-        for f in files:
-            rp = f["relative_path"]
-            url = f.get("presigned_url", "")
-            if not url:
-                continue
+        with output_path.open("w", encoding="utf-8") as out_f:
+            for f in files:
+                rp = f["relative_path"]
+                url = f.get("presigned_url", "")
+                if not url:
+                    continue
 
-            media_type = detect_media_type(rp)
-            content_parts = build_content_parts(url, media_type, user_prompt, provider_name)
+                media_type = detect_media_type(rp)
+                content_parts = build_content_parts(url, media_type, user_prompt, provider_name)
 
-            if content_parts is None:
-                skipped_unsupported += 1
-                logger.warning("跳过不支持的媒体类型: %s (type=%s, provider=%s)", rp, media_type.value, provider_name)
-                continue
+                if content_parts is None:
+                    skipped_unsupported += 1
+                    logger.warning("跳过不支持的媒体类型: %s (type=%s, provider=%s)", rp, media_type.value, provider_name)
+                    continue
 
-            custom_id = encode_custom_id([rp])
+                custom_id = encode_custom_id([rp])
 
-            messages = []
-            if system_prompt:
-                messages.append({"role": "system", "content": system_prompt})
-            messages.append({"role": "user", "content": content_parts})
+                messages = []
+                if system_prompt:
+                    messages.append({"role": "system", "content": system_prompt})
+                messages.append({"role": "user", "content": content_parts})
 
-            record = {
-                "custom_id": custom_id,
-                "method": "POST",
-                "url": endpoint,
-                "body": {"model": model, "messages": messages, **(transform_params or {})},
-            }
-            line = json.dumps(record, ensure_ascii=False, separators=(",", ":"))
+                record = {
+                    "custom_id": custom_id,
+                    "method": "POST",
+                    "url": endpoint,
+                    "body": {"model": model, "messages": messages, **(transform_params or {})},
+                }
+                line = json.dumps(record, ensure_ascii=False, separators=(",", ":"))
 
-            if len(line.encode("utf-8")) > 6 * 1024 * 1024:
-                skipped_oversized += 1
-                logger.warning("跳过超过 6 MB 限制的行: %s", rp)
-                continue
+                line_bytes = len(line.encode("utf-8"))
+                if line_bytes > 6 * 1024 * 1024:
+                    skipped_oversized += 1
+                    logger.warning("跳过超过 6 MB 限制的行: %s", rp)
+                    continue
 
-            lines.append(line)
+                out_f.write(line + "\n")
+                line_count += 1
+                total_size += line_bytes + 1
+
+                if total_size > max_size:
+                    output_path.unlink()
+                    raise LakehouseError(
+                        f"JSONL 文件大小超过限制 (100 MB)。"
+                        f"请设置 etl.sources.volume.batch_size 减小每批数据量。"
+                    )
 
         if skipped_unsupported:
             logger.warning("跳过 %d 个不支持的媒体类型文件", skipped_unsupported)
         if skipped_oversized:
             logger.warning("跳过 %d 个超过 6 MB 限制的行", skipped_oversized)
 
-        if not lines:
+        if line_count == 0:
+            output_path.unlink(missing_ok=True)
             raise LakehouseError("没有有效文件可构建 JSONL（全部被跳过）")
 
-        if len(lines) > 50_000:
+        if line_count > 50_000:
+            output_path.unlink()
             raise LakehouseError(
-                f"请求数 {len(lines)} 超过 Batch API 单文件限制 (50,000)。"
+                f"请求数 {line_count} 超过 Batch API 单文件限制 (50,000)。"
                 f"请设置 etl.sources.volume.batch_size <= 50000 分批处理。"
             )
 
-        output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
         file_size = output_path.stat().st_size
-        max_size = 100 * 1024 * 1024
-        if file_size > max_size:
-            output_path.unlink()
-            raise LakehouseError(
-                f"JSONL 文件大小 {file_size / 1024 / 1024:.1f} MB 超过限制 (100 MB)。"
-                f"请设置 etl.sources.volume.batch_size 减小每批数据量。"
-            )
-
-        logger.info("多模态 JSONL 已生成: %s (%d 条请求, %.1f MB)", output_path, len(lines), file_size / 1024 / 1024)
+        logger.info("多模态 JSONL 已生成: %s (%d 条请求, %.1f MB)", output_path, line_count, file_size / 1024 / 1024)
         return output_path
 
     # ── Volume 结果写入 ──────────────────────────────────────
@@ -431,16 +491,28 @@ class LakehouseClient:
             logger.warning("没有结果需要写入")
             return 0
 
+        # 幂等保护：如果 batch_id 已写入目标表，跳过重复写入
+        if batch_id and write_mode == "append":
+            existing_count = self._count_batch_id(target_table, batch_id)
+            if existing_count > 0:
+                logger.warning(
+                    "幂等保护: batch_id=%s 已写入 %d 行到 %s，跳过重复写入",
+                    batch_id, existing_count, target_table,
+                )
+                return existing_count
+
         # 确保目标表存在（含 Volume 特有列）
         self._ensure_volume_table_exists(target_table, result_column, include_metadata)
 
-        # 读取目标表 schema
+        # 一次性读取目标表 schema，供后续所有操作复用
         target_type_map = self._get_target_type_map(target_table)
 
         # 构建写入列
         write_cols = [FILE_PATH, VOLUME_NAME, FILE_SIZE, result_column]
         if include_metadata:
-            self._ensure_metadata_columns(target_table)
+            self._ensure_metadata_columns(target_table, existing_type_map=target_type_map)
+            # 刷新 type_map（可能新增了列）
+            target_type_map = self._get_target_type_map(target_table)
             write_cols += METADATA_COLUMNS
 
         # 只保留目标表中存在的列
@@ -485,7 +557,8 @@ class LakehouseClient:
                 row_dict[FINISH_REASON] = r.get(FINISH_REASON, "")
                 row_dict[RESPONSE_ID] = r.get(RESPONSE_ID, "")
                 row_dict[SOURCE_TEXT] = cfg.etl_volume_user_prompt  # user_prompt as source context
-                row_dict[RAW_RESPONSE] = r.get(RAW_RESPONSE, "")
+                # raw_response 可通过 etl.target.include_raw_response: false 关闭以节省存储
+                row_dict[RAW_RESPONSE] = r.get(RAW_RESPONSE, "") if cfg.etl_target_include_raw_response else ""
 
             typed_row = []
             for col in write_cols:
@@ -562,79 +635,84 @@ class LakehouseClient:
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        lines = []
         skipped_empty = 0
         skipped_oversized = 0
         seen_ids: set = set()
+        line_count = 0
+        total_size = 0
+        max_size = 100 * 1024 * 1024  # 100 MB
 
-        for row in rows:
-            key_values = [str(row.get(k, "")) for k in key_cols]
-            custom_id = encode_custom_id(key_values)
-            text_value = row.get(text_column, "")
+        with output_path.open("w", encoding="utf-8") as out_f:
+            for row in rows:
+                key_values = [str(row.get(k, "")) for k in key_cols]
+                custom_id = encode_custom_id(key_values)
+                text_value = row.get(text_column, "")
 
-            if not text_value or not text_value.strip():
-                skipped_empty += 1
-                continue
+                if not text_value or not text_value.strip():
+                    skipped_empty += 1
+                    continue
 
-            if custom_id in seen_ids:
-                logger.warning("跳过重复 custom_id: %s", custom_id)
-                continue
-            seen_ids.add(custom_id)
+                if custom_id in seen_ids:
+                    logger.warning("跳过重复 custom_id: %s", custom_id)
+                    continue
+                seen_ids.add(custom_id)
 
-            # 构建 user message：有 user_prompt 模板时替换 {text}，否则直接用原始文本
-            if user_prompt:
-                user_content = user_prompt.replace("{text}", text_value)
-            else:
-                user_content = text_value
+                # 构建 user message：有 user_prompt 模板时替换 {text}，否则直接用原始文本
+                if user_prompt:
+                    user_content = user_prompt.replace("{text}", text_value)
+                else:
+                    user_content = text_value
 
-            record = {
-                "custom_id": custom_id,
-                "method": "POST",
-                "url": endpoint,
-                "body": {
-                    "model": model,
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_content},
-                    ],
-                    **(transform_params or {}),
-                },
-            }
-            line = json.dumps(record, ensure_ascii=False, separators=(",", ":"))
+                record = {
+                    "custom_id": custom_id,
+                    "method": "POST",
+                    "url": endpoint,
+                    "body": {
+                        "model": model,
+                        "messages": [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_content},
+                        ],
+                        **(transform_params or {}),
+                    },
+                }
+                line = json.dumps(record, ensure_ascii=False, separators=(",", ":"))
 
-            if len(line.encode("utf-8")) > 6 * 1024 * 1024:
-                skipped_oversized += 1
-                logger.warning("跳过超过 6 MB 限制的行 (custom_id=%s)", custom_id)
-                continue
+                line_bytes = len(line.encode("utf-8"))
+                if line_bytes > 6 * 1024 * 1024:
+                    skipped_oversized += 1
+                    logger.warning("跳过超过 6 MB 限制的行 (custom_id=%s)", custom_id)
+                    continue
 
-            lines.append(line)
+                out_f.write(line + "\n")
+                line_count += 1
+                total_size += line_bytes + 1  # +1 for newline
+
+                if total_size > max_size:
+                    output_path.unlink()
+                    raise LakehouseError(
+                        f"JSONL 文件大小超过限制 (100 MB)。"
+                        f"请在 config.yaml 中设置 etl.sources.table.batch_size 减小每批数据量。"
+                    )
 
         if skipped_empty:
             logger.warning("跳过 %d 条空文本行", skipped_empty)
         if skipped_oversized:
             logger.warning("跳过 %d 条超过 6 MB 限制的行", skipped_oversized)
-        if not lines:
+        if line_count == 0:
+            output_path.unlink(missing_ok=True)
             raise LakehouseError("没有有效数据可构建 JSONL 文件（全部被跳过）")
 
         # 文件级校验：超过 Batch API 限制时报错，提示用户通过 batch_size 分批
-        if len(lines) > 50_000:
+        if line_count > 50_000:
+            output_path.unlink()
             raise LakehouseError(
-                f"请求数 {len(lines)} 超过 Batch API 单文件限制 (50,000)。"
+                f"请求数 {line_count} 超过 Batch API 单文件限制 (50,000)。"
                 f"请在 config.yaml 中设置 etl.sources.table.batch_size <= 50000 分批处理。"
             )
 
-        output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-
         file_size = output_path.stat().st_size
-        max_size = 100 * 1024 * 1024  # 智谱限制 100 MB，取较严的
-        if file_size > max_size:
-            output_path.unlink()
-            raise LakehouseError(
-                f"JSONL 文件大小 {file_size / 1024 / 1024:.1f} MB 超过限制 (100 MB)。"
-                f"请在 config.yaml 中设置 etl.sources.table.batch_size 减小每批数据量。"
-            )
-
-        logger.info("JSONL 文件已生成: %s (%d 条请求, %.1f MB)", output_path, len(lines), file_size / 1024 / 1024)
+        logger.info("JSONL 文件已生成: %s (%d 条请求, %.1f MB)", output_path, line_count, file_size / 1024 / 1024)
         return output_path
 
     # ── 写入目标表 ────────────────────────────────────────────
@@ -680,19 +758,32 @@ class LakehouseClient:
             logger.warning("没有结果需要写入")
             return 0
 
+        # 幂等保护：如果 batch_id 已写入目标表，跳过重复写入
+        if batch_id and write_mode == "append":
+            existing_count = self._count_batch_id(target_table, batch_id)
+            if existing_count > 0:
+                logger.warning(
+                    "幂等保护: batch_id=%s 已写入 %d 行到 %s，跳过重复写入",
+                    batch_id, existing_count, target_table,
+                )
+                return existing_count
+
         key_cols = [c.strip() for c in key_columns.split(",")]
 
         # 确保目标表存在（不存在则自动创建）
         self._ensure_table_exists(target_table, key_cols, result_column, include_metadata)
 
+        # 一次性读取目标表 schema，供后续所有操作复用（避免重复查询）
+        target_type_map = self._get_target_type_map(target_table)
+
         # 确定写入列
         write_cols = key_cols + [result_column]
         if include_metadata:
-            self._ensure_metadata_columns(target_table)
+            # 传入已有 schema，避免再次查询
+            self._ensure_metadata_columns(target_table, existing_type_map=target_type_map)
+            # 刷新 type_map（可能新增了列）
+            target_type_map = self._get_target_type_map(target_table)
             write_cols += METADATA_COLUMNS
-
-        # 读取目标表 schema 做类型匹配
-        target_type_map = self._get_target_type_map(target_table)
 
         # 只保留目标表中实际存在的列
         if target_type_map:
@@ -743,7 +834,8 @@ class LakehouseClient:
                 row_dict[FINISH_REASON] = r.get(FINISH_REASON, "")
                 row_dict[RESPONSE_ID] = r.get(RESPONSE_ID, "")
                 row_dict[SOURCE_TEXT] = source_text_map.get(normalized_key, "")
-                row_dict[RAW_RESPONSE] = r.get(RAW_RESPONSE, "")
+                # raw_response 可通过 etl.target.include_raw_response: false 关闭以节省存储
+                row_dict[RAW_RESPONSE] = r.get(RAW_RESPONSE, "") if cfg.etl_target_include_raw_response else ""
 
             typed_row = []
             for col in write_cols:
@@ -844,13 +936,24 @@ class LakehouseClient:
         logger.debug("DDL: %s", ddl)
         self.session.sql(ddl).collect()
 
-    def _ensure_metadata_columns(self, target_table: str) -> None:
-        """确保目标表包含元数据列，不存在则自动添加。"""
-        try:
-            schema = self.session.table(target_table).schema
-            existing = {f.name.strip("`").lower() for f in schema.fields}
-        except Exception:
-            return
+    def _ensure_metadata_columns(
+        self,
+        target_table: str,
+        existing_type_map: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """确保目标表包含元数据列，不存在则自动添加。
+
+        Args:
+            existing_type_map: 已读取的 schema 映射（避免重复查询）。为 None 时自动查询。
+        """
+        if existing_type_map is not None:
+            existing = set(existing_type_map.keys())
+        else:
+            try:
+                schema = self.session.table(target_table).schema
+                existing = {f.name.strip("`").lower() for f in schema.fields}
+            except Exception:
+                return
 
         for col_name, col_type in METADATA_SQL_TYPES.items():
             if col_name.lower() not in existing:
@@ -861,6 +964,17 @@ class LakehouseClient:
                     logger.info("已为目标表添加元数据列: %s %s", col_name, col_type)
                 except Exception as e:
                     logger.debug("添加列 %s 失败（可能已存在）: %s", col_name, e)
+
+    def _count_batch_id(self, target_table: str, batch_id: str) -> int:
+        """查询目标表中指定 batch_id 的行数（用于幂等保护）。"""
+        try:
+            rows = self.session.sql(
+                f"SELECT COUNT(*) AS cnt FROM {target_table} WHERE batch_id = '{batch_id}'"
+            ).collect()
+            return int(rows[0]["cnt"]) if rows else 0
+        except Exception:
+            # 目标表不存在或无 batch_id 列，视为 0
+            return 0
 
     def close(self) -> None:
         if self._session is not None:

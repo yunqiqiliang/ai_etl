@@ -35,11 +35,12 @@ class ZhipuAIProvider(BatchProvider):
 
     def upload_file(self, file_path: Path) -> str:
         logger.info("[zhipuai] 上传文件: %s", file_path)
-        obj = retry_api_call(
-            self._client.files.create,
-            file=open(file_path, "rb"),
-            purpose="batch",
-        )
+        with open(file_path, "rb") as f:
+            obj = retry_api_call(
+                self._client.files.create,
+                file=f,
+                purpose="batch",
+            )
         logger.info("[zhipuai] file_id=%s", obj.id)
         return obj.id
 
@@ -113,6 +114,34 @@ class ZhipuAIProvider(BatchProvider):
         text = tmp.read_text(encoding="utf-8")
         tmp.unlink()
         return text
+
+    def download_results_and_errors(self, batch_id: str):
+        """一次 retrieve 同时获取结果和错误文件内容，减少 API 调用次数。
+
+        Returns:
+            (result_text, error_text): 结果 JSONL 文本和错误 JSONL 文本（无则为空字符串/None）。
+        """
+        import tempfile
+        batch = retry_api_call(self._client.batches.retrieve, batch_id)
+        result_text = ""
+        error_text = None
+
+        def _read_content(content) -> str:
+            if hasattr(content, "text"):
+                return content.text
+            tmp = Path(tempfile.mktemp(suffix=".jsonl"))
+            content.write_to_file(str(tmp))
+            text = tmp.read_text(encoding="utf-8")
+            tmp.unlink()
+            return text
+
+        if batch.output_file_id:
+            content = retry_api_call(self._client.files.content, batch.output_file_id)
+            result_text = _read_content(content)
+        if batch.error_file_id:
+            content = retry_api_call(self._client.files.content, batch.error_file_id)
+            error_text = _read_content(content)
+        return result_text, error_text
 
     def cancel_batch(self, batch_id: str) -> str:
         batch = retry_api_call(self._client.batches.cancel, batch_id)

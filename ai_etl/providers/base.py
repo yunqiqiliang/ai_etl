@@ -36,7 +36,11 @@ class ProviderConfig:
 
 
 def retry_api_call(func, *args, max_retries: int = MAX_API_RETRIES, **kwargs):
-    """带指数退避的 API 调用重试。"""
+    """带指数退避的 API 调用重试。
+
+    4xx 客户端错误（认证失败、请求格式错误等）不重试，直接抛出。
+    5xx 服务端错误、限流、网络错误才重试。
+    """
     last_exc = None
     for attempt in range(1, max_retries + 1):
         try:
@@ -44,6 +48,18 @@ def retry_api_call(func, *args, max_retries: int = MAX_API_RETRIES, **kwargs):
         except Exception as e:
             last_exc = e
             err_str = str(e).lower()
+
+            # 检查 HTTP 状态码：4xx 客户端错误不重试
+            status_code = getattr(e, "status_code", None) or getattr(e, "code", None)
+            if status_code is not None:
+                try:
+                    code = int(status_code)
+                    if 400 <= code < 500 and code != 429:
+                        # 429 是限流，需要重试；其他 4xx 是客户端错误，不重试
+                        raise
+                except (ValueError, TypeError):
+                    pass
+
             is_retryable = any(kw in err_str for kw in [
                 "rate limit", "429", "500", "502", "503", "504",
                 "timeout", "connection", "reset", "broken pipe",
@@ -100,6 +116,16 @@ class BatchProvider(ABC):
     def cancel_batch(self, batch_id: str) -> str:
         """取消任务（可选实现）。"""
         raise NotImplementedError(f"{self.name} 不支持取消任务")
+
+    def download_results_and_errors(self, batch_id: str):
+        """一次调用同时获取结果和错误文件（默认实现：分两次调用，子类可覆盖优化）。
+
+        Returns:
+            (result_text, error_text): 结果 JSONL 文本和错误 JSONL 文本（无则为空字符串/None）。
+        """
+        result_text = self.download_results(batch_id)
+        error_text = self.download_errors(batch_id)
+        return result_text, error_text
 
     # ── 通用方法 ──────────────────────────────────────────────
 

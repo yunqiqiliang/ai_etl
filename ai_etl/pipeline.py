@@ -378,6 +378,8 @@ class AIETLPipeline:
 
         pending = {j.batch_id: j for j in jobs}
         start_time = time.time()
+        # 记录每个 job 的提交时间（用于计算各 job 耗时）
+        job_start_times: Dict[str, float] = {j.batch_id: start_time for j in jobs}
 
         logger.info("等待 %d 个 batch 任务完成 (轮询间隔 %.0fs)...", len(pending), poll_interval)
 
@@ -409,8 +411,9 @@ class AIETLPipeline:
 
                 if status in _TERMINAL_STATUSES:
                     done_ids.append(batch_id)
+                    job_elapsed = time.time() - job_start_times.get(batch_id, start_time)
                     if status == "completed":
-                        self._collect_results(job)
+                        self._collect_results(job, elapsed_seconds=job_elapsed)
                     elif status == "failed":
                         logger.error(
                             "[%s] batch 任务失败 (batch_id=%s)。"
@@ -421,6 +424,7 @@ class AIETLPipeline:
                         job.stats = self._make_stats(
                             job.source_rows, job.provider_name, job.model,
                             batch_id=batch_id, batch_status="failed",
+                            elapsed_seconds=job_elapsed,
                         )
                     else:
                         logger.error(
@@ -430,6 +434,7 @@ class AIETLPipeline:
                         job.stats = self._make_stats(
                             job.source_rows, job.provider_name, job.model,
                             batch_id=batch_id, batch_status=status,
+                            elapsed_seconds=job_elapsed,
                         )
 
             for bid in done_ids:
@@ -438,22 +443,21 @@ class AIETLPipeline:
             if pending:
                 time.sleep(poll_interval)
 
-    def _collect_results(self, job: _BatchJob) -> None:
+    def _collect_results(self, job: _BatchJob, elapsed_seconds: Optional[float] = None) -> None:
         """下载 batch 结果并写入目标表。"""
         cfg = self._config
         output_dir = Path(cfg.output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        # 下载结果
-        result_text = job.provider.download_results(job.batch_id)
+        # 下载结果（一次 retrieve 同时获取结果和错误，减少 API 调用）
+        result_text, error_text = job.provider.download_results_and_errors(job.batch_id)
         results = BatchProvider.parse_results(result_text) if result_text else []
+        errors = BatchProvider.parse_errors(error_text) if error_text else []
 
         if result_text:
             suffix = f"_{job.source_type}" if job.source_type else ""
             (output_dir / f"result{suffix}.jsonl").write_text(result_text, encoding="utf-8")
 
-        error_text = job.provider.download_errors(job.batch_id)
-        errors = BatchProvider.parse_errors(error_text) if error_text else []
         if error_text:
             suffix = f"_{job.source_type}" if job.source_type else ""
             (output_dir / f"error{suffix}.jsonl").write_text(error_text, encoding="utf-8")
@@ -463,9 +467,12 @@ class AIETLPipeline:
         logger.info("[%s] 推理完成: %d 成功, %d 失败", job.source_type, success_count, error_count)
 
         if error_count > 0:
+            # 按 error_code 分组统计，帮助快速定位问题类型
+            from collections import Counter
+            code_dist = Counter(e.get("error_code") for e in errors)
             logger.warning(
-                "[%s] %d 条请求推理失败，详见 output/error_%s.jsonl",
-                job.source_type, error_count, job.source_type,
+                "[%s] %d 条请求推理失败，错误分布: %s，详见 output/error_%s.jsonl",
+                job.source_type, error_count, dict(code_dist), job.source_type,
             )
 
         # 写入目标表
@@ -502,11 +509,16 @@ class AIETLPipeline:
 
         logger.info("[%s] 写入 %d 行到 %s", job.source_type, written, job.target_table)
 
+        elapsed_str = ""
+        if elapsed_seconds is not None:
+            elapsed_str = f" (耗时 {elapsed_seconds / 60:.1f}min)" if elapsed_seconds > 60 else f" (耗时 {elapsed_seconds:.0f}s)"
+        logger.info("[%s] ETL 完成%s", job.source_type, elapsed_str)
+
         job.stats = self._make_stats(
             job.source_rows, job.provider_name, job.model,
             batch_id=job.batch_id, batch_status="completed",
             success_count=success_count, error_count=error_count,
-            written_rows=written,
+            written_rows=written, elapsed_seconds=elapsed_seconds,
         )
 
     # ── Resume ────────────────────────────────────────────────
@@ -558,14 +570,43 @@ class AIETLPipeline:
     # ── 工具方法 ──────────────────────────────────────────────
 
     def _save_batch_state(self, state: Dict[str, Any]) -> None:
+        """持久化 batch 状态到独立文件（按 batch_id 命名），同时更新 last_batch.json。
+
+        使用原子写入（先写临时文件再 rename）防止进程被 kill 时文件损坏。
+        双数据源模式下每个 batch 有独立文件，互不覆盖。
+        """
         output_dir = Path(self._config.output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
-        (output_dir / "last_batch.json").write_text(
-            json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8",
-        )
+        content = json.dumps(state, ensure_ascii=False, indent=2)
+
+        batch_id = state.get("batch_id", "unknown")
+
+        # 按 batch_id 写独立文件（原子写入）
+        target = output_dir / f"batch_{batch_id}.json"
+        tmp = output_dir / f"batch_{batch_id}.json.tmp"
+        tmp.write_text(content, encoding="utf-8")
+        tmp.rename(target)
+
+        # 同时更新 last_batch.json（原子写入），方便向后兼容
+        last = output_dir / "last_batch.json"
+        tmp_last = output_dir / "last_batch.json.tmp"
+        tmp_last.write_text(content, encoding="utf-8")
+        tmp_last.rename(last)
 
     def _load_batch_state(self, batch_id: str) -> Dict[str, Any]:
-        state_file = Path(self._config.output_dir) / "last_batch.json"
+        """加载 batch 状态。优先从按 batch_id 命名的文件读取，回退到 last_batch.json。"""
+        output_dir = Path(self._config.output_dir)
+
+        # 优先读取按 batch_id 命名的独立文件
+        batch_file = output_dir / f"batch_{batch_id}.json"
+        if batch_file.exists():
+            try:
+                return json.loads(batch_file.read_text(encoding="utf-8"))
+            except Exception:
+                logger.debug("读取 batch_%s.json 失败", batch_id)
+
+        # 回退到 last_batch.json（兼容旧版本）
+        state_file = output_dir / "last_batch.json"
         if not state_file.exists():
             return {}
         try:
@@ -589,6 +630,7 @@ class AIETLPipeline:
             "success_count": kwargs.get("success_count", 0),
             "error_count": kwargs.get("error_count", 0),
             "written_rows": kwargs.get("written_rows", 0),
+            "elapsed_seconds": kwargs.get("elapsed_seconds"),
         }
 
     def close(self) -> None:

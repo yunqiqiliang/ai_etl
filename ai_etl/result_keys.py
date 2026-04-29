@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from typing import List
+from urllib.parse import quote, unquote
 
 # ── 解析后的结果字典 key ──────────────────────────────────────
 
@@ -72,12 +73,17 @@ METADATA_SQL_TYPES = {
 # ── custom_id 编解码 ──────────────────────────────────────────
 
 _CUSTOM_ID_PREFIX = "req-"
+_SEPARATOR = "|"
 
 
 def encode_custom_id(key_values: List[str]) -> str:
-    """将主键值列表编码为 custom_id。"""
-    raw = "|".join(str(v) for v in key_values)
-    return f"{_CUSTOM_ID_PREFIX}{raw}"
+    """将主键值列表编码为 custom_id。
+
+    使用 URL encoding 对每个值转义，确保值中包含分隔符 '|' 时不会产生歧义。
+    例如: ["a|b", "c"] → "req-a%7Cb|c"
+    """
+    encoded = _SEPARATOR.join(quote(str(v), safe="") for v in key_values)
+    return f"{_CUSTOM_ID_PREFIX}{encoded}"
 
 
 def decode_custom_id(custom_id: str) -> List[str]:
@@ -85,7 +91,7 @@ def decode_custom_id(custom_id: str) -> List[str]:
     raw = custom_id
     if raw.startswith(_CUSTOM_ID_PREFIX):
         raw = raw[len(_CUSTOM_ID_PREFIX):]
-    return raw.split("|")
+    return [unquote(part) for part in raw.split(_SEPARATOR)]
 
 
 def normalize_custom_id(custom_id: str) -> str:

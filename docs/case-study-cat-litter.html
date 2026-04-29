@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Case Study: 猫砂竞品主数据 AI 自动生成</title>
+<title>Case Study: 猫砂竞品分析 — 从 Excel 到运营洞察</title>
 <style>
-:root{--p:#1a56db;--pl:#e8f0fe;--t:#1f2937;--t2:#4b5563;--bg:#fff;--bga:#f8fafc;--bd:#e2e8f0;--ok:#059669;--okl:#d1fae5;--r:10px}
+:root{--p:#1a56db;--pl:#e8f0fe;--t:#1f2937;--t2:#4b5563;--bg:#fff;--bga:#f8fafc;--bd:#e2e8f0;--ok:#059669;--okl:#d1fae5;--r:10px;--warn:#d97706;--warnl:#fef3c7;--err:#dc2626;--errl:#fef2f2}
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Noto Sans SC",sans-serif;color:var(--t);line-height:1.75;background:var(--bg)}
 .c{max-width:1000px;margin:0 auto;padding:0 32px}
@@ -35,7 +35,8 @@ pre{background:#0f172a;color:#e2e8f0;padding:14px 18px;border-radius:var(--r);ov
 .co{border-radius:var(--r);padding:14px 18px;margin:16px 0;display:flex;gap:10px;font-size:13px;line-height:1.6}
 .co.i{background:var(--pl);border:1px solid #bfdbfe}
 .co.s{background:var(--okl);border:1px solid #a7f3d0}
-.co.w{background:#fef3c7;border:1px solid #fde68a}
+.co.w{background:var(--warnl);border:1px solid #fde68a}
+.co.e{background:var(--errl);border:1px solid #fecaca}
 .sg{counter-reset:s;margin:20px 0}
 .st{display:flex;gap:16px;margin-bottom:20px;padding:18px;background:var(--bg);border:1px solid var(--bd);border-radius:var(--r)}
 .st .sn{flex-shrink:0;width:32px;height:32px;background:var(--p);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;counter-increment:s}
@@ -46,6 +47,9 @@ pre{background:#0f172a;color:#e2e8f0;padding:14px 18px;border-radius:var(--r);ov
 .dg svg{max-width:100%;height:auto}
 .vf{display:inline-flex;align-items:center;gap:5px;background:var(--okl);color:#065f46;border:1px solid #a7f3d0;border-radius:16px;padding:3px 10px;font-size:12px;font-weight:600}
 .vf::before{content:"✓";background:var(--ok);color:#fff;width:16px;height:16px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:10px}
+.wf{display:inline-flex;align-items:center;gap:5px;background:var(--warnl);color:#92400e;border:1px solid #fde68a;border-radius:16px;padding:3px 10px;font-size:12px;font-weight:600}
+.ef{display:inline-flex;align-items:center;gap:5px;background:var(--errl);color:#991b1b;border:1px solid #fecaca;border-radius:16px;padding:3px 10px;font-size:12px;font-weight:600}
+.bar{height:18px;border-radius:3px;display:inline-block;vertical-align:middle}
 footer{background:#0f172a;color:#94a3b8;padding:32px 0;text-align:center;font-size:13px}
 footer a{color:#60a5fa;text-decoration:none}
 </style>
@@ -58,8 +62,8 @@ footer a{color:#60a5fa;text-decoration:none}
     <img src="https://www.yunqi.tech/_next/static/media/logo.81fa8862.png" alt="云器科技" style="height:22px">
     <span class="badge">AI ETL Reference Case Study</span>
   </div>
-  <h1>猫砂竞品主数据 AI 自动生成</h1>
-  <p class="sub">从 5 个电商平台的 Excel 销售数据出发，通过云器 Lakehouse + LLM Batch 推理，自动提取 862 条竞品商品的结构化主数据（品牌、类目、规格、配比），生成与人工标注一致的标准主数据表。</p>
+  <h1>猫砂竞品分析：从 Excel 到运营洞察</h1>
+  <p class="sub">从 5 个电商平台的 Excel 销售数据出发，通过云器 Lakehouse + LLM Batch 推理，自动生成 862 条竞品结构化主数据，构建跨渠道汇总表，修复数据质量问题，最终输出可直接指导运营决策的竞品分析报告。</p>
 </div>
 </header>
 
@@ -67,7 +71,7 @@ footer a{color:#60a5fa;text-decoration:none}
 <section>
 <div class="c">
   <h2>📋 业务背景</h2>
-  <p class="desc">某宠物用品品牌（福丸）需要建立猫砂品类的竞品价盘数据库，覆盖抖音、天猫、天猫超市、京东自营、京东POP 五个电商平台。</p>
+  <p class="desc">某宠物用品品牌（福丸）需要建立猫砂品类的竞品价盘数据库，覆盖抖音、天猫、天猫超市、京东自营、京东POP 五个电商平台，最终目标是输出可指导日常运营的竞品分析洞察。</p>
   <div class="cg">
     <div class="cd"><div class="n">5</div><h4>电商平台</h4><p>抖音/天猫/天猫超市/京东自营/京东POP</p></div>
     <div class="cd"><div class="n">862</div><h4>竞品商品</h4><p>来自各平台的猫砂类商品</p></div>
@@ -75,7 +79,7 @@ footer a{color:#60a5fa;text-decoration:none}
     <div class="cd"><div class="n">16</div><h4>类目编码</h4><p>四级类目体系(混合/植物/矿砂等)</p></div>
   </div>
   <h3>核心挑战</h3>
-  <p>各平台的商品名称是营销标题（如"福丸12包栀子花猫砂木薯猫砂混合豆腐猫砂去味除臭2.5kg"），需要从中提取结构化的产品主数据：品牌、类目、标准化产品名、配比、规格。人工处理 862 条数据耗时且不一致。</p>
+  <p>各平台的商品名称是营销标题（如"福丸12包栀子花猫砂木薯猫砂混合豆腐猫砂去味除臭2.5kg"），需要从中提取结构化的产品主数据：品牌、类目、标准化产品名、配比、规格。人工处理 862 条数据耗时且不一致。更重要的是，各平台的销售数据格式完全不同（精确值 vs 区间值 vs 指数值），需要统一处理后才能做跨渠道对比分析。</p>
 </div>
 </section>
 
@@ -84,62 +88,105 @@ footer a{color:#60a5fa;text-decoration:none}
 <div class="c">
   <h2>🔄 端到端流程</h2>
   <div class="dg">
-    <svg viewBox="0 0 860 320" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif">
+    <svg viewBox="0 0 900 420" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif">
       <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#94a3b8"/></marker></defs>
-      <rect width="860" height="320" rx="12" fill="#f8fafc" stroke="#e2e8f0"/>
-      <rect x="0" y="0" width="860" height="36" rx="12" fill="#1a56db"/><rect x="0" y="16" width="860" height="20" fill="#1a56db"/>
-      <text x="430" y="24" text-anchor="middle" fill="#fff" font-size="13" font-weight="700">猫砂竞品主数据 AI 生成流程</text>
-      <!-- Step 1 -->
-      <rect x="20" y="56" width="160" height="60" rx="8" fill="#fff" stroke="#1a56db" stroke-width="1.2"/>
-      <text x="100" y="78" text-anchor="middle" fill="#1a56db" font-size="12" font-weight="600">① Excel 导入</text>
-      <text x="100" y="96" text-anchor="middle" fill="#6b7280" font-size="10">9 sheets → 7 张表</text>
-      <!-- Step 2 -->
-      <rect x="220" y="56" width="160" height="60" rx="8" fill="#fff" stroke="#1a56db" stroke-width="1.2"/>
-      <text x="300" y="78" text-anchor="middle" fill="#1a56db" font-size="12" font-weight="600">② AI Plan</text>
-      <text x="300" y="96" text-anchor="middle" fill="#6b7280" font-size="10">采样分析 → 推荐配置</text>
-      <!-- Step 3 -->
-      <rect x="420" y="56" width="160" height="60" rx="8" fill="#fff" stroke="#f59e0b" stroke-width="1.2"/>
-      <text x="500" y="78" text-anchor="middle" fill="#92400e" font-size="12" font-weight="600">③ Batch 推理</text>
-      <text x="500" y="96" text-anchor="middle" fill="#6b7280" font-size="10">5 渠道 × 862 条并行</text>
-      <!-- Step 4 -->
-      <rect x="620" y="56" width="220" height="60" rx="8" fill="#fff" stroke="#059669" stroke-width="1.2"/>
-      <text x="730" y="78" text-anchor="middle" fill="#065f46" font-size="12" font-weight="600">④ 合并去重 → 主数据表</text>
-      <text x="730" y="96" text-anchor="middle" fill="#6b7280" font-size="10">862 行结构化主数据</text>
-      <!-- Arrows -->
-      <line x1="180" y1="86" x2="218" y2="86" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#a)"/>
-      <line x1="380" y1="86" x2="418" y2="86" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#a)"/>
-      <line x1="580" y1="86" x2="618" y2="86" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#a)"/>
-      <!-- Detail boxes -->
-      <rect x="20" y="140" width="160" height="160" rx="8" fill="#fff" stroke="#e2e8f0"/>
-      <text x="30" y="160" fill="#1a56db" font-size="11" font-weight="600">数据源表</text>
-      <text x="30" y="178" fill="#6b7280" font-size="10">product_master (46)</text>
-      <text x="30" y="194" fill="#6b7280" font-size="10">sales_douyin (44)</text>
-      <text x="30" y="210" fill="#6b7280" font-size="10">sales_tmall (50)</text>
-      <text x="30" y="226" fill="#6b7280" font-size="10">sales_tmall_chaoshi (368)</text>
-      <text x="30" y="242" fill="#6b7280" font-size="10">sales_jd_self (200)</text>
-      <text x="30" y="258" fill="#6b7280" font-size="10">sales_jd_pop (200)</text>
-      <text x="30" y="274" fill="#6b7280" font-size="10">category_mapping (114)</text>
-      <rect x="220" y="140" width="160" height="160" rx="8" fill="#fff" stroke="#e2e8f0"/>
-      <text x="230" y="160" fill="#1a56db" font-size="11" font-weight="600">Prompt 设计</text>
-      <text x="230" y="178" fill="#6b7280" font-size="10">16 个类目编码体系</text>
-      <text x="230" y="194" fill="#6b7280" font-size="10">3 个 few-shot 示例</text>
-      <text x="230" y="210" fill="#6b7280" font-size="10">JSON 结构化输出</text>
-      <text x="230" y="226" fill="#6b7280" font-size="10">temperature=0.1</text>
-      <text x="230" y="242" fill="#6b7280" font-size="10">model: qwen3-max</text>
-      <rect x="420" y="140" width="160" height="160" rx="8" fill="#fff" stroke="#e2e8f0"/>
-      <text x="430" y="160" fill="#92400e" font-size="11" font-weight="600">Batch 任务</text>
-      <text x="430" y="178" fill="#6b7280" font-size="10">5 个 batch 并行提交</text>
-      <text x="430" y="194" fill="#6b7280" font-size="10">862 条请求</text>
-      <text x="430" y="210" fill="#6b7280" font-size="10">50% 成本</text>
-      <text x="430" y="226" fill="#6b7280" font-size="10">862/862 成功</text>
-      <text x="430" y="242" fill="#6b7280" font-size="10">0 失败</text>
-      <rect x="620" y="140" width="220" height="160" rx="8" fill="#fff" stroke="#e2e8f0"/>
-      <text x="630" y="160" fill="#065f46" font-size="11" font-weight="600">输出表结构</text>
-      <text x="630" y="178" fill="#6b7280" font-size="10">品牌 | 一级类目 | 二级类目</text>
-      <text x="630" y="194" fill="#6b7280" font-size="10">三级类目 | 四级类目 | 产品名称</text>
-      <text x="630" y="210" fill="#6b7280" font-size="10">主数据编码 | 规格 | 配比</text>
-      <text x="630" y="230" fill="#94a3b8" font-size="10">+ 溯源: 平台 | 源主键 | 源名称</text>
-      <text x="630" y="246" fill="#94a3b8" font-size="10">+ 审计: 类目编码 | ai_raw</text>
+      <rect width="900" height="420" rx="12" fill="#f8fafc" stroke="#e2e8f0"/>
+      <rect x="0" y="0" width="900" height="36" rx="12" fill="#1a56db"/><rect x="0" y="16" width="900" height="20" fill="#1a56db"/>
+      <text x="450" y="24" text-anchor="middle" fill="#fff" font-size="13" font-weight="700">猫砂竞品分析全流程：Excel → AI 主数据 → 数据质量修复 → 运营洞察</text>
+
+      <!-- Phase 1: Data Prep -->
+      <rect x="20" y="52" width="200" height="52" rx="8" fill="#fff" stroke="#1a56db" stroke-width="1.5"/>
+      <text x="120" y="74" text-anchor="middle" fill="#1a56db" font-size="12" font-weight="700">① Excel 导入</text>
+      <text x="120" y="90" text-anchor="middle" fill="#6b7280" font-size="10">9 sheets → 7 张表</text>
+
+      <!-- Phase 2: AI -->
+      <rect x="240" y="52" width="200" height="52" rx="8" fill="#fff" stroke="#f59e0b" stroke-width="1.5"/>
+      <text x="340" y="74" text-anchor="middle" fill="#92400e" font-size="12" font-weight="700">② AI Batch 推理</text>
+      <text x="340" y="90" text-anchor="middle" fill="#6b7280" font-size="10">5 渠道 × 862 条 → 主数据</text>
+
+      <!-- Phase 3: Channel Summary -->
+      <rect x="460" y="52" width="200" height="52" rx="8" fill="#fff" stroke="#7c3aed" stroke-width="1.5"/>
+      <text x="560" y="74" text-anchor="middle" fill="#5b21b6" font-size="12" font-weight="700">③ 跨渠道汇总</text>
+      <text x="560" y="90" text-anchor="middle" fill="#6b7280" font-size="10">主数据 + 销售指标 → 统一表</text>
+
+      <!-- Phase 4: Analysis -->
+      <rect x="680" y="52" width="200" height="52" rx="8" fill="#fff" stroke="#059669" stroke-width="1.5"/>
+      <text x="780" y="74" text-anchor="middle" fill="#065f46" font-size="12" font-weight="700">④ 运营分析</text>
+      <text x="780" y="90" text-anchor="middle" fill="#6b7280" font-size="10">品牌份额 / 价格带 / 转化</text>
+
+      <!-- Arrows top -->
+      <line x1="220" y1="78" x2="238" y2="78" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#a)"/>
+      <line x1="440" y1="78" x2="458" y2="78" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#a)"/>
+      <line x1="660" y1="78" x2="678" y2="78" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#a)"/>
+
+      <!-- Detail: Phase 1 -->
+      <rect x="20" y="120" width="200" height="130" rx="8" fill="#fff" stroke="#e2e8f0"/>
+      <text x="30" y="140" fill="#1a56db" font-size="11" font-weight="600">数据源表</text>
+      <text x="30" y="158" fill="#6b7280" font-size="10">product_master (46 标杆)</text>
+      <text x="30" y="174" fill="#6b7280" font-size="10">sales_douyin (44)</text>
+      <text x="30" y="190" fill="#6b7280" font-size="10">sales_tmall (50)</text>
+      <text x="30" y="206" fill="#6b7280" font-size="10">sales_tmall_chaoshi (368)</text>
+      <text x="30" y="222" fill="#6b7280" font-size="10">sales_jd_self / jd_pop (400)</text>
+      <text x="30" y="238" fill="#6b7280" font-size="10">category_mapping (114)</text>
+
+      <!-- Detail: Phase 2 -->
+      <rect x="240" y="120" width="200" height="130" rx="8" fill="#fff" stroke="#e2e8f0"/>
+      <text x="250" y="140" fill="#92400e" font-size="11" font-weight="600">AI 主数据生成</text>
+      <text x="250" y="158" fill="#6b7280" font-size="10">model: qwen3-max</text>
+      <text x="250" y="174" fill="#6b7280" font-size="10">few-shot + 类目体系</text>
+      <text x="250" y="190" fill="#6b7280" font-size="10">862/862 成功, 0 失败</text>
+      <text x="250" y="206" fill="#6b7280" font-size="10">→ competitor_product_master</text>
+      <text x="250" y="222" fill="#6b7280" font-size="10">品牌/类目/规格/配比/编码</text>
+      <text x="250" y="238" fill="#6b7280" font-size="10">+ 溯源 + ai_raw</text>
+
+      <!-- Detail: Phase 3 -->
+      <rect x="460" y="120" width="200" height="130" rx="8" fill="#fff" stroke="#e2e8f0"/>
+      <text x="470" y="140" fill="#5b21b6" font-size="11" font-weight="600">数据质量修复</text>
+      <text x="470" y="158" fill="#6b7280" font-size="10">京东区间值 → 中位数</text>
+      <text x="470" y="174" fill="#6b7280" font-size="10">天猫销量逐行解析</text>
+      <text x="470" y="190" fill="#6b7280" font-size="10">件单价异常值过滤</text>
+      <text x="470" y="206" fill="#6b7280" font-size="10">转化指数 ≠ 转化率</text>
+      <text x="470" y="222" fill="#6b7280" font-size="10">→ channel_summary (862行)</text>
+      <text x="470" y="238" fill="#6b7280" font-size="10">统一 schema, 显式类型</text>
+
+      <!-- Detail: Phase 4 -->
+      <rect x="680" y="120" width="200" height="130" rx="8" fill="#fff" stroke="#e2e8f0"/>
+      <text x="690" y="140" fill="#065f46" font-size="11" font-weight="600">运营洞察</text>
+      <text x="690" y="158" fill="#6b7280" font-size="10">品牌市场份额排名</text>
+      <text x="690" y="174" fill="#6b7280" font-size="10">品类结构分析</text>
+      <text x="690" y="190" fill="#6b7280" font-size="10">价格带 × 转化率</text>
+      <text x="690" y="206" fill="#6b7280" font-size="10">福丸 vs 竞品对标</text>
+      <text x="690" y="222" fill="#6b7280" font-size="10">跨渠道品牌表现</text>
+      <text x="690" y="238" fill="#6b7280" font-size="10">高转化商品发现</text>
+
+      <!-- Bottom: Data flow -->
+      <rect x="20" y="270" width="860" height="136" rx="8" fill="#fff" stroke="#e2e8f0"/>
+      <text x="450" y="290" text-anchor="middle" fill="#1a56db" font-size="12" font-weight="700">数据表流转</text>
+      <!-- Tables -->
+      <rect x="40" y="304" width="130" height="36" rx="6" fill="#e8f0fe" stroke="#1a56db" stroke-width="0.8"/>
+      <text x="105" y="326" text-anchor="middle" fill="#1a56db" font-size="10" font-weight="600">sales_* (5张)</text>
+      <line x1="170" y1="322" x2="200" y2="322" stroke="#94a3b8" stroke-width="1" marker-end="url(#a)"/>
+
+      <rect x="202" y="304" width="170" height="36" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="0.8"/>
+      <text x="287" y="326" text-anchor="middle" fill="#92400e" font-size="10" font-weight="600">competitor_product_master</text>
+      <line x1="372" y1="322" x2="402" y2="322" stroke="#94a3b8" stroke-width="1" marker-end="url(#a)"/>
+
+      <rect x="404" y="304" width="170" height="36" rx="6" fill="#ede9fe" stroke="#7c3aed" stroke-width="0.8"/>
+      <text x="489" y="326" text-anchor="middle" fill="#5b21b6" font-size="10" font-weight="600">channel_summary (862行)</text>
+      <line x1="574" y1="322" x2="604" y2="322" stroke="#94a3b8" stroke-width="1" marker-end="url(#a)"/>
+
+      <rect x="606" y="304" width="130" height="36" rx="6" fill="#d1fae5" stroke="#059669" stroke-width="0.8"/>
+      <text x="671" y="326" text-anchor="middle" fill="#065f46" font-size="10" font-weight="600">运营分析报告</text>
+
+      <text x="105" y="360" text-anchor="middle" fill="#9ca3af" font-size="9">原始销售数据</text>
+      <text x="287" y="360" text-anchor="middle" fill="#9ca3af" font-size="9">AI 结构化主数据</text>
+      <text x="489" y="360" text-anchor="middle" fill="#9ca3af" font-size="9">主数据 + 销售指标(已修复)</text>
+      <text x="671" y="360" text-anchor="middle" fill="#9ca3af" font-size="9">品牌/品类/价格/转化</text>
+
+      <text x="40" y="395" fill="#9ca3af" font-size="9">脚本: import_excel.py</text>
+      <text x="240" y="395" fill="#9ca3af" font-size="9">脚本: AI ETL pipeline</text>
+      <text x="440" y="395" fill="#9ca3af" font-size="9">脚本: fix_data_quality.py</text>
+      <text x="640" y="395" fill="#9ca3af" font-size="9">脚本: competitive_analysis.py</text>
     </svg>
   </div>
 </div>
@@ -156,20 +203,22 @@ footer a{color:#60a5fa;text-decoration:none}
   <table>
     <tr><th>Sheet</th><th>导入表名</th><th>行数</th><th>列数</th><th>说明</th></tr>
     <tr><td>福丸竞品主数据</td><td><code>product_master</code></td><td>46</td><td>9</td><td>福丸品牌 SKU 主数据（标杆数据）</td></tr>
-    <tr><td>猫砂抖音</td><td><code>sales_douyin</code></td><td>44</td><td>19</td><td>抖音平台销售数据</td></tr>
-    <tr><td>猫砂天猫</td><td><code>sales_tmall</code></td><td>50</td><td>7</td><td>天猫平台销售数据</td></tr>
-    <tr><td>猫砂天猫超市</td><td><code>sales_tmall_chaoshi</code></td><td>368</td><td>17</td><td>天猫超市销售数据</td></tr>
-    <tr><td>猫砂京东自营</td><td><code>sales_jd_self</code></td><td>200</td><td>17</td><td>京东自营销售排行</td></tr>
-    <tr><td>猫砂京东pop</td><td><code>sales_jd_pop</code></td><td>200</td><td>17</td><td>京东POP销售排行</td></tr>
+    <tr><td>猫砂抖音</td><td><code>sales_douyin</code></td><td>44</td><td>19</td><td>抖音平台销售数据（精确值）</td></tr>
+    <tr><td>猫砂天猫</td><td><code>sales_tmall</code></td><td>50</td><td>7</td><td>天猫平台销售数据（件单价+区间销量）</td></tr>
+    <tr><td>猫砂天猫超市</td><td><code>sales_tmall_chaoshi</code></td><td>368</td><td>17</td><td>天猫超市销售数据（指数值）</td></tr>
+    <tr><td>猫砂京东自营</td><td><code>sales_jd_self</code></td><td>200</td><td>17</td><td>京东自营销售排行（区间值）</td></tr>
+    <tr><td>猫砂京东pop</td><td><code>sales_jd_pop</code></td><td>200</td><td>17</td><td>京东POP销售排行（区间值）</td></tr>
     <tr><td>类目表</td><td><code>category_mapping</code></td><td>114</td><td>13</td><td>四级类目编码映射</td></tr>
   </table>
   </div>
+
+  <div class="co w"><span>⚠️</span><span><strong>各平台数据格式差异极大。</strong>抖音是精确数值，天猫是件单价+区间销量，天猫超市是指数值（非真实金额），京东是区间值（如"￥50万~￥75万"）。这些差异在后续跨渠道汇总时需要逐一处理。</span></div>
 
   <h3>导入方式</h3>
   <p>使用 Python <code>openpyxl</code> 读取 Excel + ZettaPark SDK 写入 Lakehouse，自动处理列名清洗、空行过滤、类型统一（全部 STRING）。</p>
   <pre>from ai_etl.lakehouse import LakehouseClient
 lh = LakehouseClient(config=cfg)
-lh.session.sql("CREATE SCHEMA IF NOT EXISTS cat_litter").collect()
+lh.session.sql("CREATE SCHEMA IF NOT EXISTS cat_litter COMMENT '猫砂竞品分析'").collect()
 # 每个 sheet → 一张表，自动建表 + 写入
 df = lh.session.create_dataframe(data_rows, schema=schema)
 df.write.save_as_table("cat_litter.sales_jd_self", mode="append")</pre>
@@ -178,10 +227,10 @@ df.write.save_as_table("cat_litter.sales_jd_self", mode="append")</pre>
 </div>
 </section>
 
-<!-- Step 2: Prompt 设计 -->
+<!-- Step 2: Prompt 设计 + Batch 推理 -->
 <section class="alt">
 <div class="c">
-  <h2>② Prompt 设计：类目体系 + Few-shot 示例</h2>
+  <h2>② AI 主数据生成：Prompt 设计 + Batch 推理</h2>
   <p class="desc">AI 需要从电商营销标题中提取结构化主数据。Prompt 设计是质量的关键。</p>
 
   <h3>类目体系（嵌入 system_prompt）</h3>
@@ -213,51 +262,16 @@ df.write.save_as_table("cat_litter.sales_jd_self", mode="append")</pre>
 输出: {"品牌":"许翠花","三级类目":"植物猫砂","四级类目":"木薯猫砂",
        "类目编码":"PB-TP","配比":"100%木薯","规格":"2.5"}</pre>
 
-  <h3>推理参数</h3>
+  <h3>5 渠道并行 Batch 推理</h3>
+  <p>为每个渠道创建独立的 config.yaml，通过 AI ETL pipeline 提交 batch 任务。5 个 batch 在 DashScope 服务端并行处理。</p>
   <div class="tw">
   <table>
     <tr><th>参数</th><th>值</th><th>理由</th></tr>
     <tr><td>model</td><td><code>qwen3-max</code></td><td>复杂语义理解任务需要强模型</td></tr>
     <tr><td>temperature</td><td><code>0.1</code></td><td>低随机性，确保 JSON 输出稳定</td></tr>
     <tr><td>enable_thinking</td><td><code>false</code></td><td>不需要思考链，节省 token</td></tr>
-    <tr><td>user_prompt</td><td><code>{text}</code> 模板</td><td>每行商品名称替换到模板中</td></tr>
   </table>
   </div>
-</div>
-</section>
-
-<!-- Step 3: Batch 推理 -->
-<section>
-<div class="c">
-  <h2>③ 5 渠道并行 Batch 推理</h2>
-  <p class="desc">为每个渠道创建独立的 config.yaml，通过 AI ETL pipeline 提交 batch 任务。5 个 batch 在 DashScope 服务端并行处理。</p>
-
-  <h3>配置文件结构</h3>
-  <pre>configs/
-├── cat_litter_douyin.yaml        # 抖音 (44 条)
-├── cat_litter_tmall.yaml         # 天猫 (50 条)
-├── cat_litter_tmall_chaoshi.yaml # 天猫超市 (368 条)
-├── cat_litter_jd_self.yaml       # 京东自营 (200 条)
-└── cat_litter_jd_pop.yaml        # 京东POP (200 条)</pre>
-
-  <h3>提交命令</h3>
-  <pre># 方式一：逐个提交
-PYTHONPATH=. python -c "
-from ai_etl.config import Config
-from ai_etl.pipeline import AIETLPipeline
-cfg = Config(config_path=Path('configs/cat_litter_jd_self.yaml'))
-pipeline = AIETLPipeline(config=cfg)
-pipeline.run()
-pipeline.close()
-"
-
-# 方式二：批量提交（只提交不等待）
-for name in ['douyin', 'tmall', 'tmall_chaoshi', 'jd_self', 'jd_pop']:
-    cfg = Config(config_path=Path(f'configs/cat_litter_{name}.yaml'))
-    pipeline = AIETLPipeline(config=cfg)
-    job = pipeline._submit_table()
-    print(f'{name}: {job.batch_id}')
-    pipeline.close()</pre>
 
   <h3>执行结果</h3>
   <div class="tw">
@@ -271,144 +285,240 @@ for name in ['douyin', 'tmall', 'tmall_chaoshi', 'jd_self', 'jd_pop']:
     <tr><td style="font-weight:600">合计</td><td style="font-weight:600">862</td><td></td><td style="font-weight:600">862</td><td style="font-weight:600">0</td></tr>
   </table>
   </div>
-  <div class="co s"><span>✅</span><span><strong>862/862 全部成功，0 失败。</strong>Batch API 的服务端重试机制确保了 100% 完成率。</span></div>
+  <div class="co s"><span>✅</span><span><strong>862/862 全部成功，0 失败。</strong>Batch API 的服务端重试机制确保了 100% 完成率。5 个 batch 并行处理，总等待约 40 分钟。</span></div>
 
-  <h3>耗时与性能分析</h3>
-  <p>5 个 batch 并行提交后，DashScope 服务端并行处理，总等待时间约 <strong>40 分钟</strong>（取决于最慢的渠道）。</p>
-  <div class="tw">
-  <table>
-    <tr><th></th><th>Batch API（本案例）</th><th>实时 API（逐条调用）</th></tr>
-    <tr><td>862 条处理时间</td><td><strong>~40 分钟</strong>（并行，含排队）</td><td>~43 分钟（按 QPM=20 限流，862/20=43min）</td></tr>
-    <tr><td>8,000 条预估</td><td><strong>~60 分钟</strong>（服务端批量调度）</td><td>~6.7 小时（8000/20=400min）</td></tr>
-    <tr><td>50,000 条预估</td><td><strong>~2-4 小时</strong>（单文件上限）</td><td>~42 小时（50000/20=2500min）</td></tr>
-    <tr><td>成本</td><td><strong>50% 折扣</strong></td><td>标准价</td></tr>
-    <tr><td>并发管理</td><td>服务端自动</td><td>自行管理 QPM/TPM 限流</td></tr>
-    <tr><td>失败处理</td><td>服务端重试 + error 文件</td><td>自行实现重试逻辑</td></tr>
-    <tr><td>中断恢复</td><td>batch_id 恢复，零丢失</td><td>需自建 checkpoint</td></tr>
-  </table>
-  </div>
-  <div class="co i"><span>📊</span><span><strong>规模越大，Batch 优势越明显。</strong>862 条时两者耗时接近（Batch 有排队开销），但 8,000 条时 Batch 快 6 倍，50,000 条时快 10+ 倍。且 Batch 全程无需人工干预，实时 API 需要持续运行客户端进程并处理限流。</span></div>
-</div>
-</section>
-
-<!-- Step 4: 合并去重 -->
-<section class="alt">
-<div class="c">
-  <h2>④ 合并去重 → 生成统一主数据表</h2>
-  <p class="desc">5 个渠道的 AI 结果通过 SQL 合并、去重、JSON 解析，生成与 product_master 结构一致的竞品主数据表。</p>
-
-  <h3>合并 SQL 逻辑</h3>
-  <pre>CREATE TABLE cat_litter.competitor_product_master AS
-WITH all_data AS (
-    -- 5 个渠道 UNION ALL，JOIN 回源表取原始商品名称
-    SELECT '京东自营' AS platform, a.商品编号 AS source_key,
-           b.商品名称 AS source_name, a.ai_result
-    FROM cat_litter.jd_self_product_master a
-    LEFT JOIN cat_litter.sales_jd_self b ON a.商品编号 = b.商品编号
-    UNION ALL ...
-),
-deduped AS (
-    -- 同平台同 source_key 去重
-    SELECT *, ROW_NUMBER() OVER (PARTITION BY platform, source_key) AS rn
-    FROM all_data
-),
-with_seq AS (
-    -- 按品牌+类目分组编号，用于生成主数据编码
-    SELECT *, ROW_NUMBER() OVER (PARTITION BY brand, cat_code ORDER BY platform) AS seq
-    FROM parsed WHERE rn = 1
-)
-SELECT
-    -- 与 product_master 对齐的 9 列
-    brand AS 品牌, '宠物用品' AS 一级类目, '猫砂' AS 二级类目,
-    cat3 AS 三级类目, cat4 AS 四级类目, pname AS 产品名称,
-    -- 自动生成主数据编码：品牌前2字母-PS-CL-类目编码-序号-规格克数
-    CONCAT(UPPER(SUBSTR(brand,1,2)),'-PS-CL-',cat_code,'-',
-           LPAD(seq,4,'0'),'-',CAST(spec*1000 AS INT)) AS 主数据,
-    spec AS 规格, formula AS 配比,
-    -- 额外溯源字段
-    platform AS 数据来源平台, source_key AS 源数据主键,
-    source_name AS 源数据商品名称, cat_code AS 类目编码, ai_result AS ai_raw
-FROM with_seq;</pre>
-
-  <h3>输出表结构</h3>
+  <h3>合并去重 → 生成统一主数据表</h3>
+  <p>5 个渠道的 AI 结果通过 SQL 合并、去重、JSON 解析，生成 <code>competitor_product_master</code> 表（862 行），结构与 <code>product_master</code> 一致，额外增加溯源字段。</p>
   <div class="tw">
   <table>
     <tr><th>列名</th><th>来源</th><th>说明</th></tr>
     <tr style="background:#f0fdf4"><td><strong>品牌</strong></td><td>AI 提取</td><td>品牌名称</td></tr>
-    <tr style="background:#f0fdf4"><td><strong>一级类目</strong></td><td>固定值</td><td>宠物用品</td></tr>
-    <tr style="background:#f0fdf4"><td><strong>二级类目</strong></td><td>固定值</td><td>猫砂</td></tr>
-    <tr style="background:#f0fdf4"><td><strong>三级类目</strong></td><td>AI 提取</td><td>如：混合猫砂、植物猫砂</td></tr>
-    <tr style="background:#f0fdf4"><td><strong>四级类目</strong></td><td>AI 提取</td><td>如：豆腐膨润土猫砂</td></tr>
+    <tr style="background:#f0fdf4"><td><strong>三级类目 / 四级类目</strong></td><td>AI 提取</td><td>如：混合猫砂/豆腐膨润土猫砂</td></tr>
     <tr style="background:#f0fdf4"><td><strong>产品名称</strong></td><td>AI 标准化</td><td>去除营销词的标准产品名</td></tr>
     <tr style="background:#f0fdf4"><td><strong>主数据</strong></td><td>规则生成</td><td>编码如 PD-PS-CL-HB-TFCL-0001-3600</td></tr>
-    <tr style="background:#f0fdf4"><td><strong>规格</strong></td><td>AI 提取</td><td>数字(kg)</td></tr>
-    <tr style="background:#f0fdf4"><td><strong>配比</strong></td><td>AI 提取</td><td>如：70%豆腐砂+30%膨润土砂</td></tr>
-    <tr><td>数据来源平台</td><td>系统</td><td>抖音/天猫/京东等</td></tr>
-    <tr><td>源数据主键</td><td>系统</td><td>源表中的商品编号/ID</td></tr>
-    <tr><td>源数据商品名称</td><td>JOIN 源表</td><td>原始电商营销标题</td></tr>
-    <tr><td>类目编码</td><td>AI 提取</td><td>如 HB-TFCL</td></tr>
-    <tr><td>ai_raw</td><td>AI 原始</td><td>完整 JSON 响应（审计用）</td></tr>
+    <tr style="background:#f0fdf4"><td><strong>规格 / 配比</strong></td><td>AI 提取</td><td>数字(kg) / 如 70%豆腐砂+30%膨润土砂</td></tr>
+    <tr><td>数据来源平台 / 源数据主键</td><td>系统</td><td>溯源字段</td></tr>
+    <tr><td>类目编码 / ai_raw</td><td>AI</td><td>审计字段</td></tr>
   </table>
   </div>
-  <p style="font-size:13px;color:#6b7280">绿色行 = 与 product_master 完全一致的 9 列；白色行 = 额外溯源/审计字段。</p>
 </div>
 </section>
 
-<!-- 结果验证 -->
+<!-- Step 3: 跨渠道汇总 + 数据质量修复 -->
 <section>
 <div class="c">
-  <h2>⑤ 结果验证</h2>
+  <h2>③ 跨渠道汇总与数据质量修复</h2>
+  <p class="desc">将 AI 生成的主数据与各渠道原始销售数据 JOIN，构建统一的 <code>channel_summary</code> 表。这一步暴露了大量数据质量问题，必须逐一修复后才能做分析。</p>
 
-  <h3>结构对比：人工标注 vs AI 生成</h3>
+  <h3>channel_summary 表结构</h3>
   <div class="tw">
   <table>
-    <tr><th></th><th>product_master（人工）</th><th>competitor_product_master（AI）</th></tr>
-    <tr><td>品牌</td><td>福丸</td><td>pidan / 许翠花 / 网易严选 / 凯锐思 ...</td></tr>
-    <tr><td>三级/四级</td><td>混合猫砂/豆腐膨润土猫砂</td><td>混合猫砂/豆腐膨润土猫砂 ✅</td></tr>
-    <tr><td>产品名称</td><td>自然空气白茶豆腐膨润土混合猫砂</td><td>pidan经典混合猫砂 ✅</td></tr>
-    <tr><td>主数据编码</td><td>FW-PS-CL-HB-TFCL-0001-2500</td><td>PD-PS-CL-HB-TFCL-0001-3600 ✅</td></tr>
-    <tr><td>规格</td><td>2.5</td><td>3.6 ✅</td></tr>
-    <tr><td>配比</td><td>70%豆腐砂+30%膨润土砂</td><td>70%豆腐+30%膨润土 ✅</td></tr>
+    <tr><th>列名</th><th>类型</th><th>来源</th><th>说明</th></tr>
+    <tr><td>品牌 / 三级类目 / 四级类目</td><td>STRING</td><td>competitor_product_master</td><td>AI 生成的主数据字段</td></tr>
+    <tr><td>类目编码 / 产品名称 / 主数据 / 规格</td><td>STRING</td><td>competitor_product_master</td><td>AI 生成的主数据字段</td></tr>
+    <tr><td>渠道</td><td>STRING</td><td>系统</td><td>抖音/天猫/天猫超市/京东自营/京东POP</td></tr>
+    <tr><td>销售额</td><td>DOUBLE</td><td>各渠道销售表</td><td>统一为数值（区间取中位数）</td></tr>
+    <tr><td>销量</td><td>DOUBLE</td><td>各渠道销售表</td><td>统一为数值</td></tr>
+    <tr><td>件单价</td><td>DOUBLE</td><td>各渠道销售表</td><td>单件价格</td></tr>
+    <tr><td>浏览量</td><td>DOUBLE</td><td>京东/天猫超市</td><td>流量指标</td></tr>
+    <tr><td>转化率</td><td>DOUBLE</td><td>京东</td><td>成交转化率(%)</td></tr>
+    <tr><td>排名</td><td>DOUBLE</td><td>京东</td><td>品类排名</td></tr>
+    <tr><td>数据精度</td><td>STRING</td><td>系统</td><td>精确值/区间中位数/指数值</td></tr>
   </table>
   </div>
 
-  <h3>品牌分布（Top 10）</h3>
+  <h3>发现的数据质量问题（5 个关键问题）</h3>
+  <div class="co e"><span>🚨</span><span><strong>数据正确是分析的基本前提。</strong>如果不修复这些问题，所有分析结论都是误导性的。</span></div>
+
   <div class="tw">
   <table>
-    <tr><th>品牌</th><th>商品数</th><th>品牌</th><th>商品数</th></tr>
-    <tr><td>福丸</td><td>148</td><td>城市理享</td><td>22</td></tr>
-    <tr><td>pidan</td><td>43</td><td>名创优品</td><td>21</td></tr>
-    <tr><td>网易严选</td><td>35</td><td>囧宝</td><td>20</td></tr>
-    <tr><td>洁客</td><td>26</td><td>艾禾美</td><td>20</td></tr>
-    <tr><td>凯锐思</td><td>26</td><td>许翠花</td><td>22</td></tr>
+    <tr><th>#</th><th>问题</th><th>原因</th><th>影响</th><th>修复方式</th></tr>
+    <tr>
+      <td>1</td>
+      <td><span class="ef">VOID 类型错误</span></td>
+      <td>CTAS 用抖音数据建表，抖音的浏览量/转化率为 NULL，ClickZetta 推断列类型为 VOID</td>
+      <td>后续 INSERT 天猫超市的 DOUBLE 值时报错：<code>implicit cast not allowed for double to void</code></td>
+      <td>改用 <code>CREATE TABLE</code> 显式定义 schema（所有数值列为 DOUBLE）</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td><span class="ef">京东件单价异常</span></td>
+      <td>京东的 <code>成交客单价</code> 字段有 <code>￥10万~￥20万</code> 的值，解析为 150,000</td>
+      <td>件单价最高达 15 万元，严重拉高均价，导致价格带分析完全失真</td>
+      <td>件单价 &gt; 5,000 元置为 NULL（猫砂单件不可能超过 5,000 元）</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td><span class="wf">天猫超市转化率 &gt; 100%</span></td>
+      <td>天猫超市的 <code>转化指数</code> 是相对指数值（如 3,500），不是百分比</td>
+      <td>如果放入转化率列，会出现 3,500% 的转化率</td>
+      <td>转化指数不放入转化率列，标记数据精度为"指数值(非百分比)"</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td><span class="wf">天猫销量全部固定 37,500</span></td>
+      <td>天猫的 <code>支付单量</code> 是区间值（如"2.5万~5万"），之前用同一个中位数 37,500 填充所有行</td>
+      <td>50 个天猫商品的销量完全相同，无法区分畅销品和滞销品</td>
+      <td>每行独立解析各自的 <code>支付单量</code> 区间中位数</td>
+    </tr>
+    <tr>
+      <td>5</td>
+      <td><span class="wf">京东转化率 &gt; 100%</span></td>
+      <td>京东的 <code>成交转化率</code> 区间值解析后部分超过 100%</td>
+      <td>转化率分析出现不合理的值</td>
+      <td>转化率 &gt; 100% 置为 NULL</td>
+    </tr>
   </table>
   </div>
 
-  <h3>类目分布</h3>
+  <h3>修复后验证</h3>
+  <div class="cg">
+    <div class="cd"><div class="n">862</div><h4>总行数</h4><p>5 渠道全部写入成功</p></div>
+    <div class="cd"><div class="n">350</div><h4>件单价最高(元)</h4><p>京东自营，修复前 150,000</p></div>
+    <div class="cd"><div class="n">77.5%</div><h4>转化率最高</h4><p>京东POP，修复前 &gt;100%</p></div>
+    <div class="cd"><div class="n">10</div><h4>天猫销量种类</h4><p>修复前全部 37,500</p></div>
+  </div>
+
+  <h3>各渠道数据特征</h3>
   <div class="tw">
   <table>
-    <tr><th>类目</th><th>编码</th><th>数量</th><th>占比</th></tr>
-    <tr><td>混合猫砂/豆腐膨润土</td><td>HB-TFCL</td><td>170</td><td>20%</td></tr>
-    <tr><td>植物猫砂/豆腐</td><td>PB-TF</td><td>135</td><td>16%</td></tr>
-    <tr><td>植物猫砂/木薯</td><td>PB-TP</td><td>111</td><td>13%</td></tr>
-    <tr><td>膨润土猫砂</td><td>CL-CL</td><td>93</td><td>11%</td></tr>
-    <tr><td>矿砂</td><td>MN-MN</td><td>89</td><td>10%</td></tr>
-    <tr><td>混合猫砂/其他</td><td>HB-OCL</td><td>82</td><td>10%</td></tr>
-    <tr><td>其他类目</td><td>...</td><td>182</td><td>21%</td></tr>
+    <tr><th>渠道</th><th>行数</th><th>数据精度</th><th>有销售额</th><th>有件单价</th><th>有转化率</th><th>有排名</th></tr>
+    <tr><td>抖音</td><td>44</td><td>精确值</td><td>✅</td><td>✅ (40/44)</td><td>❌</td><td>❌</td></tr>
+    <tr><td>天猫</td><td>50</td><td>区间中位数估算</td><td>✅</td><td>✅ (50/50)</td><td>❌</td><td>❌</td></tr>
+    <tr><td>天猫超市</td><td>368</td><td>指数值(非百分比)</td><td>✅ (指数)</td><td>❌</td><td>❌</td><td>❌</td></tr>
+    <tr><td>京东自营</td><td>200</td><td>区间中位数</td><td>✅</td><td>✅ (188/200)</td><td>✅ (196/200)</td><td>✅</td></tr>
+    <tr><td>京东POP</td><td>200</td><td>区间中位数</td><td>✅</td><td>✅ (197/200)</td><td>✅ (194/200)</td><td>✅</td></tr>
   </table>
   </div>
 
-  <h3>数据质量</h3>
+  <div class="co i"><span>💡</span><span><strong>京东数据最完整</strong>（有销售额、件单价、转化率、排名），是做竞品分析的最佳数据源。抖音有精确的销售额和销量。天猫超市的数据是指数值，只能做相对排序，不能做绝对金额比较。</span></div>
+</div>
+</section>
+
+<!-- Step 4: 竞品运营分析 -->
+<section class="alt">
+<div class="c">
+  <h2>④ 竞品运营分析</h2>
+  <p class="desc">基于修复后的 <code>channel_summary</code> 数据，从品牌份额、品类结构、价格带、跨渠道对比等维度输出运营洞察。以下数据以京东自营为主（数据最完整），辅以抖音和天猫数据。</p>
+
+  <h3>4.1 品牌市场份额（京东自营，按销售额排名）</h3>
   <div class="tw">
   <table>
-    <tr><th>指标</th><th>数值</th><th>说明</th></tr>
-    <tr><td>总行数</td><td>862</td><td>去重后</td></tr>
-    <tr><td>品牌识别率</td><td>98.4%</td><td>14 条空品牌（天猫超市部分白牌商品）</td></tr>
-    <tr><td>类目匹配率</td><td>100%</td><td>全部匹配到 16 个标准类目之一</td></tr>
-    <tr><td>规格提取率</td><td>73%</td><td>233 条无法从商品名称推断规格</td></tr>
-    <tr><td>配比提取率</td><td>95.7%</td><td>37 条商品名称中无成分信息</td></tr>
-    <tr><td>Batch 成功率</td><td>100%</td><td>862/862 全部成功</td></tr>
+    <tr><th>排名</th><th>品牌</th><th>SKU 数</th><th>销售额</th><th>平均排名</th><th>平均转化率</th></tr>
+    <tr style="background:#fef3c7"><td>1</td><td><strong>许翠花</strong></td><td>14</td><td>¥12,750,000</td><td>43.3</td><td>14.6%</td></tr>
+    <tr style="background:#fef3c7"><td>2</td><td><strong>pidan</strong></td><td>16</td><td>¥9,625,000</td><td>72.1</td><td>17.6%</td></tr>
+    <tr><td>3</td><td>网易严选</td><td>13</td><td>¥4,340,000</td><td>86.2</td><td>30.2%</td></tr>
+    <tr><td>4</td><td>凯锐思</td><td>11</td><td>¥2,815,000</td><td>88.7</td><td>29.7%</td></tr>
+    <tr><td>5</td><td>京东京造</td><td>13</td><td>¥2,775,000</td><td>117.1</td><td>25.2%</td></tr>
+    <tr style="background:#e8f0fe"><td>6</td><td><strong>福丸</strong></td><td>5</td><td>¥2,745,000</td><td>59.4</td><td>26.5%</td></tr>
+    <tr><td>7</td><td>lorde里兜</td><td>12</td><td>¥2,160,000</td><td>116.7</td><td>23.9%</td></tr>
+    <tr><td>8</td><td>城市理享</td><td>12</td><td>¥2,055,000</td><td>129.9</td><td>19.2%</td></tr>
+    <tr><td>9</td><td>艾禾美</td><td>5</td><td>¥1,925,000</td><td>43.4</td><td>21.5%</td></tr>
+    <tr><td>10</td><td>瑞梦迪</td><td>4</td><td>¥1,920,000</td><td>83.5</td><td>27.5%</td></tr>
   </table>
+  </div>
+
+  <div class="co i"><span>📊</span><span><strong>福丸在京东自营排名第 6</strong>，但 SKU 数仅 5 个（远少于许翠花 14、pidan 16）。福丸的平均排名 59.4 优于多数竞品，转化率 26.5% 处于中上水平。<strong>运营建议：扩充京东自营 SKU 数量是提升销售额的最直接手段。</strong></span></div>
+
+  <h3>4.2 品类结构分析</h3>
+  <div class="tw">
+  <table>
+    <tr><th>品类</th><th>编码</th><th>SKU 数</th><th>京东销售额</th><th>抖音销售额</th></tr>
+    <tr><td>植物猫砂/木薯猫砂</td><td>PB-TP</td><td>110</td><td>¥14,590,000</td><td>¥308,971</td></tr>
+    <tr><td>混合猫砂/木薯豆腐膨润土</td><td>HB-TTCL</td><td>44</td><td>¥10,420,000</td><td>¥65,832</td></tr>
+    <tr><td>植物猫砂/豆腐猫砂</td><td>PB-TF</td><td>131</td><td>¥8,750,000</td><td>¥42,602</td></tr>
+    <tr><td>混合猫砂/豆腐膨润土</td><td>HB-TFCL</td><td>169</td><td>¥8,570,000</td><td>¥1,182,810</td></tr>
+    <tr><td>膨润土猫砂</td><td>CL-CL</td><td>93</td><td>¥4,775,000</td><td>¥279,420</td></tr>
+    <tr><td>矿砂</td><td>MN-MN</td><td>82</td><td>¥4,600,000</td><td>¥15,702</td></tr>
+  </table>
+  </div>
+
+  <div class="co i"><span>📊</span><span><strong>木薯猫砂（PB-TP）在京东销售额最高</strong>，但在抖音表现一般。<strong>豆腐膨润土混合猫砂（HB-TFCL）在抖音表现突出</strong>（¥118 万），是抖音渠道的主力品类。不同渠道的品类偏好差异明显，需要差异化选品策略。</span></div>
+
+  <h3>4.3 福丸 vs 竞品头部品牌（京东自营）</h3>
+  <div class="tw">
+  <table>
+    <tr><th>品牌</th><th>SKU</th><th>销售额</th><th>平均排名</th><th>均价</th><th>转化率</th></tr>
+    <tr style="background:#fef3c7"><td>许翠花</td><td>14</td><td>¥12,750,000</td><td>43.3</td><td>¥178</td><td>14.6%</td></tr>
+    <tr style="background:#fef3c7"><td>pidan</td><td>16</td><td>¥9,625,000</td><td>72.1</td><td>¥98</td><td>17.6%</td></tr>
+    <tr><td>网易严选</td><td>13</td><td>¥4,340,000</td><td>86.2</td><td>¥122</td><td>30.2%</td></tr>
+    <tr style="background:#e8f0fe"><td><strong>福丸</strong></td><td><strong>5</strong></td><td><strong>¥2,745,000</strong></td><td><strong>59.4</strong></td><td><strong>¥105</strong></td><td><strong>26.5%</strong></td></tr>
+    <tr><td>洁客</td><td>8</td><td>¥1,020,000</td><td>116.4</td><td>¥107</td><td>47.5%</td></tr>
+  </table>
+  </div>
+
+  <div class="co w"><span>⚡</span><span><strong>关键发现：</strong>许翠花以高客单价（¥178）策略领跑，pidan 以多 SKU（16 个）+ 中等价位（¥98）取胜。福丸的转化率（26.5%）和排名（59.4）都不错，但 <strong>SKU 数量（5 个）是明显短板</strong>。如果福丸将 SKU 扩充到 pidan 的水平（16 个），按当前转化率估算，销售额有望达到 ¥8,000,000+。</span></div>
+
+  <h3>4.4 福丸跨渠道表现</h3>
+  <div class="tw">
+  <table>
+    <tr><th>渠道</th><th>SKU</th><th>销售额</th><th>平均销量</th><th>均价</th></tr>
+    <tr style="background:#f0fdf4"><td><strong>天猫</strong></td><td>50</td><td>¥10,322,688</td><td>3,851</td><td>¥68</td></tr>
+    <tr><td>京东自营</td><td>5</td><td>¥2,745,000</td><td>8,180</td><td>¥105</td></tr>
+    <tr><td>抖音</td><td>43</td><td>¥2,649,151</td><td>947</td><td>¥91</td></tr>
+    <tr><td>京东POP</td><td>7</td><td>¥260,000</td><td>1,071</td><td>¥101</td></tr>
+    <tr><td>天猫超市</td><td>43</td><td>¥64,430 (指数)</td><td>1,318</td><td>—</td></tr>
+  </table>
+  </div>
+
+  <div class="co i"><span>📊</span><span><strong>天猫是福丸的主力渠道</strong>（¥1,032 万，50 个 SKU），但均价最低（¥68）。京东自营均价最高（¥105），单 SKU 产出最高（¥549,000/SKU），是高价值渠道。抖音 SKU 多（43 个）但单 SKU 产出低（¥61,608/SKU），适合做品牌曝光和引流。</span></div>
+
+  <h3>4.5 价格带分析（京东自营）</h3>
+  <div class="tw">
+  <table>
+    <tr><th>价格带</th><th>SKU 数</th><th>销售额</th><th>平均转化率</th><th>分析</th></tr>
+    <tr><td>0–50 元</td><td>19</td><td>¥3,460,000</td><td>31.4%</td><td>高转化，低客单价</td></tr>
+    <tr style="background:#f0fdf4"><td><strong>50–100 元</strong></td><td><strong>68</strong></td><td><strong>¥19,000,000</strong></td><td><strong>28.1%</strong></td><td><strong>主力价格带，SKU 最多</strong></td></tr>
+    <tr style="background:#f0fdf4"><td><strong>100–200 元</strong></td><td><strong>83</strong></td><td><strong>¥25,195,000</strong></td><td><strong>25.3%</strong></td><td><strong>销售额最高的价格带</strong></td></tr>
+    <tr><td>200–300 元</td><td>15</td><td>¥8,840,000</td><td>21.8%</td><td>高客单价，SKU 少</td></tr>
+    <tr><td>300+ 元</td><td>3</td><td>¥1,375,000</td><td>20.8%</td><td>超高端，极少 SKU</td></tr>
+  </table>
+  </div>
+
+  <div class="co i"><span>📊</span><span><strong>100–200 元是销售额最高的价格带</strong>（¥2,520 万），50–100 元是 SKU 最密集的价格带（68 个）。福丸均价 ¥105 正好处于两个主力价格带的交界处，定位合理。<strong>转化率随价格上升而下降</strong>，但 200+ 元价格带的单 SKU 产出更高。</span></div>
+
+  <h3>4.6 跨渠道品牌对比（Top 10 品牌）</h3>
+  <div class="tw">
+  <table>
+    <tr><th>品牌</th><th>天猫</th><th>京东自营</th><th>抖音</th><th>京东POP</th></tr>
+    <tr><td><strong>福丸</strong></td><td>¥10,322,688</td><td>¥2,745,000</td><td>¥2,649,151</td><td>¥260,000</td></tr>
+    <tr><td>许翠花</td><td>—</td><td>¥12,750,000</td><td>—</td><td>¥1,320,000</td></tr>
+    <tr><td>pidan</td><td>—</td><td>¥9,625,000</td><td>—</td><td>¥2,775,000</td></tr>
+    <tr><td>网易严选</td><td>—</td><td>¥4,340,000</td><td>—</td><td>¥315,000</td></tr>
+    <tr><td>凯锐思</td><td>—</td><td>¥2,815,000</td><td>—</td><td>¥645,000</td></tr>
+    <tr><td>京东京造</td><td>—</td><td>¥2,775,000</td><td>—</td><td>—</td></tr>
+    <tr><td>艾禾美</td><td>—</td><td>¥1,925,000</td><td>—</td><td>¥150,000</td></tr>
+  </table>
+  </div>
+  <p style="font-size:12px;color:#9ca3af;margin-top:4px">"—" 表示该品牌在该渠道无数据（不在本次采集范围内，不代表该品牌不在该渠道销售）。天猫超市为指数值，不列入金额对比。</p>
+
+  <div class="co w"><span>⚡</span><span><strong>福丸是唯一在所有 5 个渠道都有数据的品牌</strong>（因为本次数据采集以福丸为中心）。许翠花和 pidan 在京东渠道占据绝对优势，但在天猫和抖音的数据未被采集。后续可扩大采集范围以获得更完整的竞争格局。</span></div>
+</div>
+</section>
+
+<!-- 运营建议 -->
+<section>
+<div class="c">
+  <h2>⑤ 运营建议</h2>
+  <p class="desc">基于以上数据分析，为福丸品牌提出以下运营建议。</p>
+
+  <div class="cg" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr))">
+    <div class="cd" style="border-left:4px solid #dc2626">
+      <h4>🔴 紧急：扩充京东自营 SKU</h4>
+      <p>福丸在京东自营仅 5 个 SKU，远低于许翠花（14）和 pidan（16）。京东自营是高价值渠道（均价 ¥105，转化率 26.5%），扩充 SKU 是提升销售额最直接的手段。建议优先上架木薯猫砂（PB-TP）和混合猫砂（HB-TTCL）品类。</p>
+    </div>
+    <div class="cd" style="border-left:4px solid #f59e0b">
+      <h4>🟡 重要：优化天猫定价策略</h4>
+      <p>天猫是福丸最大渠道（¥1,032 万），但均价仅 ¥68，低于京东自营的 ¥105。100–200 元价格带在京东的销售额最高（¥2,520 万），建议在天猫也推出更多中高端 SKU，提升客单价。</p>
+    </div>
+    <div class="cd" style="border-left:4px solid #1a56db">
+      <h4>🔵 机会：抖音差异化选品</h4>
+      <p>抖音渠道豆腐膨润土混合猫砂（HB-TFCL）销售额 ¥118 万，是抖音主力品类。福丸在抖音有 43 个 SKU 但单 SKU 产出低，建议聚焦 HB-TFCL 品类的爆款打造，减少长尾 SKU。</p>
+    </div>
+    <div class="cd" style="border-left:4px solid #059669">
+      <h4>🟢 关注：高转化商品学习</h4>
+      <p>京东 POP 中部分小品牌转化率超过 60%（如多恩 77.5%、洁客 67.5%），远高于行业均值。建议分析这些高转化商品的详情页、价格策略和评价，提炼可复用的转化优化经验。</p>
+    </div>
   </div>
 </div>
 </section>
@@ -417,9 +527,9 @@ FROM with_seq;</pre>
 <section class="alt">
 <div class="c">
   <h2>💡 关键经验</h2>
-  <div class="cg" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
+  <div class="cg" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr))">
     <div class="cd">
-      <h4>1. Few-shot 示例决定质量</h4>
+      <h4>1. Few-shot 示例决定 AI 质量</h4>
       <p>福丸的 46 条人工标注数据不是"要处理的数据"，而是"教 AI 怎么做的示例"。3 个精选的 few-shot 示例（覆盖不同品牌和类目）比 10 个同质示例效果更好。</p>
     </div>
     <div class="cd">
@@ -427,20 +537,20 @@ FROM with_seq;</pre>
       <p>把 16 个类目编码作为"选择题"嵌入 prompt，而不是让 AI 自由发挥。这确保了 100% 的类目匹配率，且与 category_mapping 表完全对齐。</p>
     </div>
     <div class="cd">
-      <h4>3. 低 temperature 保证结构化输出</h4>
-      <p>temperature=0.1 确保 AI 输出稳定的 JSON 格式。temperature 过高会导致 JSON 格式不一致或添加多余的解释文字。</p>
+      <h4>3. 数据正确是分析的前提</h4>
+      <p>跨渠道汇总暴露了 5 个关键数据质量问题（VOID 类型、件单价异常、转化指数误用、销量固定值、转化率越界）。<strong>不修复就分析 = 误导决策。</strong>数据质量检查脚本应该在每次数据更新后自动运行。</p>
     </div>
     <div class="cd">
-      <h4>4. 并行提交节省时间</h4>
-      <p>5 个渠道的 batch 同时提交，在 DashScope 服务端并行处理。总等待时间 = 最慢的那个渠道，而不是 5 个渠道之和。</p>
+      <h4>4. 各平台数据格式差异巨大</h4>
+      <p>抖音是精确值，天猫是区间值，天猫超市是指数值，京东是区间值。统一处理时必须标记"数据精度"列，避免将指数值当作真实金额做跨渠道对比。</p>
     </div>
     <div class="cd">
-      <h4>5. 溯源字段不可少</h4>
-      <p>保留 platform、source_key、source_name、ai_raw 等溯源字段，方便后续人工抽检、问题排查和数据回溯。</p>
+      <h4>5. 显式 schema 避免类型推断陷阱</h4>
+      <p>ClickZetta 的 CTAS 会将 NULL 列推断为 VOID 类型，后续 INSERT 非 NULL 值时报错。解决方案：先 <code>CREATE TABLE</code> 显式定义所有列类型，再 INSERT 数据。</p>
     </div>
     <div class="cd">
-      <h4>6. 规格提取是短板</h4>
-      <p>27% 的商品无法从名称中推断规格（名称中不含重量信息）。后续可结合商品详情页或价格信息补充。</p>
+      <h4>6. Batch API 保证大规模完整性</h4>
+      <p>862 条请求 100% 成功，0 失败。Batch API 的服务端重试机制在大规模处理时比实时 API 更可靠。50% 成本折扣在数据量大时节省显著。</p>
     </div>
   </div>
 </div>
@@ -462,32 +572,63 @@ FROM with_seq;</pre>
 cd ai_etl && pip install -e .</pre>
     </div></div>
     <div class="st"><div class="sn"></div><div class="sb">
-      <h4>用 plan 命令生成配置</h4>
-      <pre>python -m ai_etl plan --table your_schema.your_table --hint "提取品牌、类目、规格"</pre>
-      <p>AI 会采样数据并推荐 model、prompt、参数。将输出的 config 片段保存为 yaml 文件。</p>
+      <h4>AI Plan → Test → Run</h4>
+      <pre># 1. AI 分析数据，推荐配置
+python -m ai_etl plan --table your_schema.your_table --hint "提取品牌、类目、规格"
+
+# 2. 实时测试 prompt 效果（秒级返回）
+python -m ai_etl test --config config.yaml --count 2
+
+# 3. 提交 Batch 推理
+python -m ai_etl run</pre>
     </div></div>
     <div class="st"><div class="sn"></div><div class="sb">
-      <h4>提交 Batch 推理</h4>
-      <pre>python -c "
-from ai_etl.config import Config
-from ai_etl.pipeline import AIETLPipeline
-cfg = Config(config_path=Path('configs/your_config.yaml'))
-AIETLPipeline(config=cfg).run()
-"</pre>
+      <h4>合并去重 → 主数据表</h4>
+      <p>用 SQL 从 AI 结果表中解析 JSON、去重、生成主数据编码。参考 <code>scripts/rebuild_competitor_master_v2.py</code>。</p>
     </div></div>
     <div class="st"><div class="sn"></div><div class="sb">
-      <h4>合并去重生成主数据表</h4>
-      <p>用 SQL 从 AI 结果表中解析 JSON、去重、生成主数据编码，创建最终的主数据表。参考 <code>scripts/rebuild_competitor_master_v2.py</code>。</p>
+      <h4>跨渠道汇总 + 数据质量修复</h4>
+      <pre># 构建 channel_summary 并修复数据质量
+PYTHONPATH=. python scripts/fix_data_quality.py
+
+# 运行数据质量检查
+PYTHONPATH=. python scripts/data_quality_check.py</pre>
+    </div></div>
+    <div class="st"><div class="sn"></div><div class="sb">
+      <h4>运营分析</h4>
+      <pre># 输出竞品分析报告
+PYTHONPATH=. python scripts/competitive_analysis.py</pre>
+      <p>分析脚本输出品牌份额、品类结构、价格带、跨渠道对比等 8 个维度的运营洞察。</p>
     </div></div>
   </div>
 </div>
 </section>
 
+<!-- 耗时与性能 -->
+<section class="alt">
+<div class="c">
+  <h2>⏱️ 耗时与成本</h2>
+  <div class="tw">
+  <table>
+    <tr><th></th><th>Batch API（本案例）</th><th>实时 API（逐条调用）</th></tr>
+    <tr><td>862 条处理时间</td><td><strong>~40 分钟</strong>（并行，含排队）</td><td>~43 分钟（按 QPM=20 限流）</td></tr>
+    <tr><td>8,000 条预估</td><td><strong>~60 分钟</strong>（服务端批量调度）</td><td>~6.7 小时</td></tr>
+    <tr><td>50,000 条预估</td><td><strong>~2-4 小时</strong>（单文件上限）</td><td>~42 小时</td></tr>
+    <tr><td>成本</td><td><strong>50% 折扣</strong></td><td>标准价</td></tr>
+    <tr><td>并发管理</td><td>服务端自动</td><td>自行管理 QPM/TPM 限流</td></tr>
+    <tr><td>失败处理</td><td>服务端重试 + error 文件</td><td>自行实现重试逻辑</td></tr>
+    <tr><td>中断恢复</td><td>batch_id 恢复，零丢失</td><td>需自建 checkpoint</td></tr>
+  </table>
+  </div>
+  <div class="co i"><span>📊</span><span><strong>规模越大，Batch 优势越明显。</strong>862 条时两者耗时接近，但 8,000 条时 Batch 快 6 倍，50,000 条时快 10+ 倍。且 Batch 全程无需人工干预。</span></div>
+</div>
+</section>
+
 <footer>
 <div class="c">
-  <p style="color:#e2e8f0;font-size:15px;font-weight:600;margin-bottom:10px">猫砂竞品主数据 AI 自动生成 — Case Study</p>
+  <p style="color:#e2e8f0;font-size:15px;font-weight:600;margin-bottom:10px">猫砂竞品分析：从 Excel 到运营洞察 — Case Study</p>
   <p>开源项目：<a href="https://github.com/yunqiqiliang/ai_etl">github.com/yunqiqiliang/ai_etl</a> · 云器 Lakehouse：<a href="https://www.yunqi.tech">yunqi.tech</a></p>
-  <p style="margin-top:10px;font-size:11px;color:#64748b">本案例基于真实数据验证：5 个电商平台、862 条竞品商品、qwen3-max 模型、Batch API 50% 成本、100% 成功率。</p>
+  <p style="margin-top:10px;font-size:11px;color:#64748b">本案例基于真实数据验证：5 个电商平台、862 条竞品商品、qwen3-max 模型、Batch API 50% 成本、100% 成功率。数据经过 5 项质量修复后用于运营分析。</p>
 </div>
 </footer>
 

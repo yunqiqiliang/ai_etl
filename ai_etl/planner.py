@@ -332,8 +332,8 @@ def test_with_realtime(
 ) -> List[Dict[str, Any]]:
     """用实时 API 测试当前 config 的 prompt 效果。
 
-    从源表随机取 sample_count 条数据，用实时 API 秒级返回结果。
-    用于 plan 后快速验证 prompt 质量，无需等待 batch。
+    自动检测 config 中启用的 source 类型（table 或 volume），
+    采样数据后用实时 API 秒级返回结果。
     """
     cfg = config or Config()
     api_key = os.getenv("DASHSCOPE_API_KEY", "")
@@ -344,76 +344,150 @@ def test_with_realtime(
     results = []
 
     try:
-        # 读取源表采样
-        table = cfg.etl_table_name
-        key_col = cfg.etl_table_key_columns
-        text_col = cfg.etl_table_text_column
-
-        if not table:
-            raise RuntimeError("config 中未配置 etl.sources.table.table")
-
-        logger.info("从 %s 采样 %d 条数据...", table, sample_count)
-        rows = lh.session.sql(
-            f"SELECT `{key_col}`, `{text_col}` FROM {table} LIMIT {sample_count}"
-        ).collect()
-
-        if not rows:
-            raise RuntimeError(f"源表 {table} 无数据")
-
-        # 构建 prompt
-        system_prompt = cfg.etl_table_system_prompt
-        user_prompt_tpl = cfg.etl_table_user_prompt
-        model = cfg.resolve_model("table")
-        transform_params = cfg.get_transform_params("table")
-
         from openai import OpenAI
         client = OpenAI(api_key=api_key, base_url="https://dashscope.aliyuncs.com/compatible-mode/v1")
 
-        for row in rows:
-            key_val = str(row[key_col])
-            text_val = str(row[text_col])
-
-            # 构建 user message（和 batch 逻辑一致）
-            if user_prompt_tpl:
-                user_content = user_prompt_tpl.replace("{text}", text_val)
-            else:
-                user_content = text_val
-
-            logger.info("测试: %s = %s", key_col, key_val)
-
-            # 实时调用
-            kwargs = {
-                "model": model,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_content},
-                ],
-            }
-            # 推理参数
-            extra_body = {}
-            for k, v in (transform_params or {}).items():
-                if k == "enable_thinking":
-                    extra_body["enable_thinking"] = v
-                else:
-                    kwargs[k] = v
-            if extra_body:
-                kwargs["extra_body"] = extra_body
-
-            resp = client.chat.completions.create(**kwargs)
-            ai_result = resp.choices[0].message.content.strip()
-            tokens = resp.usage.total_tokens if resp.usage else 0
-
-            results.append({
-                "key": key_val,
-                "input": text_val,
-                "output": ai_result,
-                "tokens": tokens,
-                "model": model,
-            })
+        # 判断测试 table 还是 volume
+        if cfg.etl_volume_enabled and not cfg.etl_table_enabled:
+            results = _test_volume(cfg, lh, client, sample_count)
+        else:
+            results = _test_table(cfg, lh, client, sample_count)
 
         return results
     finally:
         lh.close()
+
+
+def _test_table(cfg: Config, lh: LakehouseClient, client: Any, sample_count: int) -> List[Dict[str, Any]]:
+    """Table 模式实时测试。"""
+    table = cfg.etl_table_name
+    key_col = cfg.etl_table_key_columns
+    text_col = cfg.etl_table_text_column
+    if not table:
+        raise RuntimeError("config 中未配置 etl.sources.table.table")
+
+    logger.info("从 %s 采样 %d 条数据...", table, sample_count)
+    rows = lh.session.sql(f"SELECT `{key_col}`, `{text_col}` FROM {table} LIMIT {sample_count}").collect()
+    if not rows:
+        raise RuntimeError(f"源表 {table} 无数据")
+
+    system_prompt = cfg.etl_table_system_prompt
+    user_prompt_tpl = cfg.etl_table_user_prompt
+    model = cfg.resolve_model("table")
+    transform_params = cfg.get_transform_params("table")
+
+    results = []
+    for row in rows:
+        key_val = str(row[key_col])
+        text_val = str(row[text_col])
+        user_content = user_prompt_tpl.replace("{text}", text_val) if user_prompt_tpl else text_val
+
+        logger.info("测试: %s = %s", key_col, key_val)
+        kwargs, extra_body = _build_realtime_kwargs(model, system_prompt, user_content, transform_params)
+        resp = client.chat.completions.create(**kwargs, **({} if not extra_body else {"extra_body": extra_body}))
+
+        results.append({
+            "key": key_val,
+            "input": text_val,
+            "output": resp.choices[0].message.content.strip(),
+            "tokens": resp.usage.total_tokens if resp.usage else 0,
+            "model": model,
+            "source_type": "table",
+        })
+    return results
+
+
+def _test_volume(cfg: Config, lh: LakehouseClient, client: Any, sample_count: int) -> List[Dict[str, Any]]:
+    """Volume 模式实时测试。"""
+    from ai_etl.media_types import detect_media_type, build_content_parts
+
+    volume_sql_ref = cfg.get_volume_sql_ref()
+    logger.info("从 %s 采样 %d 个文件...", volume_sql_ref, sample_count)
+
+    # 发现文件
+    files = lh.session.sql(
+        f"SELECT relative_path, size FROM (SHOW USER VOLUME DIRECTORY)" if volume_sql_ref == "USER VOLUME"
+        else f"SELECT relative_path, size FROM DIRECTORY({volume_sql_ref})"
+    ).collect()
+
+    from ai_etl.media_types import filter_files_by_extensions, filter_files_by_subdirectory
+    file_list = [{"relative_path": str(r["relative_path"]), "size": int(r["size"] or 0)} for r in files if r["relative_path"]]
+    if cfg.etl_volume_file_types:
+        file_list = filter_files_by_extensions(file_list, cfg.etl_volume_file_types)
+    if cfg.etl_volume_subdirectory:
+        file_list = filter_files_by_subdirectory(file_list, cfg.etl_volume_subdirectory)
+
+    if not file_list:
+        raise RuntimeError("Volume 中没有匹配的文件")
+
+    file_list = file_list[:sample_count]
+
+    # 生成预签名 URL
+    lh.session.sql("SET cz.sql.function.get.presigned.url.force.external=true").collect()
+
+    system_prompt = cfg.etl_volume_system_prompt
+    user_prompt = cfg.etl_volume_user_prompt
+    model = cfg.resolve_model("volume")
+    transform_params = cfg.get_transform_params("volume")
+
+    results = []
+    for f in file_list:
+        rp = f["relative_path"]
+        url_rows = lh.session.sql(f"SELECT GET_PRESIGNED_URL({volume_sql_ref}, '{rp}', 3600) AS url").collect()
+        url = str(url_rows[0]["url"]) if url_rows else None
+        if not url:
+            logger.warning("跳过无法生成 URL 的文件: %s", rp)
+            continue
+
+        media_type = detect_media_type(rp)
+        content_parts = build_content_parts(url, media_type, user_prompt, cfg.provider_name)
+        if content_parts is None:
+            logger.warning("跳过不支持的媒体类型: %s", rp)
+            continue
+
+        logger.info("测试: %s", rp)
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": content_parts})
+
+        kwargs = {"model": model, "messages": messages}
+        extra_body = {}
+        for k, v in (transform_params or {}).items():
+            if k == "enable_thinking":
+                extra_body["enable_thinking"] = v
+            else:
+                kwargs[k] = v
+
+        resp = client.chat.completions.create(**kwargs, **({} if not extra_body else {"extra_body": extra_body}))
+
+        results.append({
+            "key": rp,
+            "input": f"[{media_type.value}] {rp}",
+            "output": resp.choices[0].message.content.strip(),
+            "tokens": resp.usage.total_tokens if resp.usage else 0,
+            "model": model,
+            "source_type": "volume",
+        })
+    return results
+
+
+def _build_realtime_kwargs(model: str, system_prompt: str, user_content: str, transform_params: Optional[Dict]) -> tuple:
+    """构建实时 API 调用参数，返回 (kwargs, extra_body)。"""
+    kwargs = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_content},
+        ],
+    }
+    extra_body = {}
+    for k, v in (transform_params or {}).items():
+        if k == "enable_thinking":
+            extra_body["enable_thinking"] = v
+        else:
+            kwargs[k] = v
+    return kwargs, extra_body
 
 
 def format_test_results(results: List[Dict[str, Any]]) -> str:

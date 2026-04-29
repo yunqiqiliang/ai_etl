@@ -324,3 +324,105 @@ def generate_config_snippet(result: Dict[str, Any], source_type: str) -> str:
       user_prompt: "{result.get('user_prompt', '')}"
       target_table: "schema.volume_ai_results"
 """
+
+
+def test_with_realtime(
+    config: Optional[Config] = None,
+    sample_count: int = 1,
+) -> List[Dict[str, Any]]:
+    """用实时 API 测试当前 config 的 prompt 效果。
+
+    从源表随机取 sample_count 条数据，用实时 API 秒级返回结果。
+    用于 plan 后快速验证 prompt 质量，无需等待 batch。
+    """
+    cfg = config or Config()
+    api_key = os.getenv("DASHSCOPE_API_KEY", "")
+    if not api_key:
+        raise RuntimeError("需要 DASHSCOPE_API_KEY")
+
+    lh = LakehouseClient(config=cfg)
+    results = []
+
+    try:
+        # 读取源表采样
+        table = cfg.etl_table_name
+        key_col = cfg.etl_table_key_columns
+        text_col = cfg.etl_table_text_column
+
+        if not table:
+            raise RuntimeError("config 中未配置 etl.sources.table.table")
+
+        logger.info("从 %s 采样 %d 条数据...", table, sample_count)
+        rows = lh.session.sql(
+            f"SELECT `{key_col}`, `{text_col}` FROM {table} LIMIT {sample_count}"
+        ).collect()
+
+        if not rows:
+            raise RuntimeError(f"源表 {table} 无数据")
+
+        # 构建 prompt
+        system_prompt = cfg.etl_table_system_prompt
+        user_prompt_tpl = cfg.etl_table_user_prompt
+        model = cfg.resolve_model("table")
+        transform_params = cfg.get_transform_params("table")
+
+        from openai import OpenAI
+        client = OpenAI(api_key=api_key, base_url="https://dashscope.aliyuncs.com/compatible-mode/v1")
+
+        for row in rows:
+            key_val = str(row[key_col])
+            text_val = str(row[text_col])
+
+            # 构建 user message（和 batch 逻辑一致）
+            if user_prompt_tpl:
+                user_content = user_prompt_tpl.replace("{text}", text_val)
+            else:
+                user_content = text_val
+
+            logger.info("测试: %s = %s", key_col, key_val)
+
+            # 实时调用
+            kwargs = {
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_content},
+                ],
+            }
+            # 推理参数
+            extra_body = {}
+            for k, v in (transform_params or {}).items():
+                if k == "enable_thinking":
+                    extra_body["enable_thinking"] = v
+                else:
+                    kwargs[k] = v
+            if extra_body:
+                kwargs["extra_body"] = extra_body
+
+            resp = client.chat.completions.create(**kwargs)
+            ai_result = resp.choices[0].message.content.strip()
+            tokens = resp.usage.total_tokens if resp.usage else 0
+
+            results.append({
+                "key": key_val,
+                "input": text_val,
+                "output": ai_result,
+                "tokens": tokens,
+                "model": model,
+            })
+
+        return results
+    finally:
+        lh.close()
+
+
+def format_test_results(results: List[Dict[str, Any]]) -> str:
+    """格式化测试结果。"""
+    lines = []
+    for i, r in enumerate(results, 1):
+        lines.append(f"━━━ 测试 {i}/{len(results)} ━━━")
+        lines.append(f"  输入: {r['input'][:80]}")
+        lines.append(f"  输出: {r['output'][:200]}")
+        lines.append(f"  模型: {r['model']}  tokens: {r['tokens']}")
+        lines.append("")
+    return "\n".join(lines)

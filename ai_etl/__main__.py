@@ -50,6 +50,11 @@ def main():
     plan_p.add_argument("--subdirectory", default="", help="Volume 子目录过滤")
     plan_p.add_argument("--hint", default="", help="告诉 AI 你想做什么 (如 '提取情感倾向' '生成产品描述')")
 
+    # test
+    test_p = sub.add_parser("test", help="用实时 API 测试 config 的 prompt 效果（秒级返回）")
+    test_p.add_argument("--config", default="config.yaml", help="配置文件路径")
+    test_p.add_argument("--count", type=int, default=1, help="测试条数 (默认 1)")
+
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -127,6 +132,18 @@ def main():
         else:
             print("请指定 --table 或 --volume-type")
             sys.exit(1)
+
+    elif args.command == "test":
+        from pathlib import Path
+        from ai_etl.config import Config
+        from ai_etl.planner import test_with_realtime, format_test_results
+
+        cfg = Config(config_path=Path(args.config))
+        print(f"\n🧪 实时测试 (model={cfg.resolve_model('table')}, count={args.count})\n")
+        results = test_with_realtime(config=cfg, sample_count=args.count)
+        print(format_test_results(results))
+        if results:
+            print(f"✅ 测试完成。确认输出符合预期后，运行 'python -m ai_etl run' 提交 batch。")
 
     else:
         parser.print_help()

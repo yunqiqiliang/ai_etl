@@ -183,6 +183,14 @@ python -m ai_etl plan --table your_schema.your_table --hint "生成产品营销�
 # Copy the output config snippet into config.yaml
 ```
 
+**Option A2: Test the config with realtime API** (recommended, seconds):
+
+```bash
+python -m ai_etl test --config config.yaml --count 2
+# Samples 2 rows, calls realtime API, shows results instantly
+# Verify the output quality before committing to a batch job
+```
+
 **Option B: Edit manually.** Here is a minimal working example for **table mode** (structured text):
 
 ```yaml
@@ -331,10 +339,14 @@ Volume mode features:
 ### CLI
 
 ```bash
-# AI 分析数据，推荐 ETL 配置（先 plan 再 run）
+# AI 分析数据，推荐 ETL 配置（先 plan 再 test 再 run）
 python -m ai_etl plan --table schema.my_table
 python -m ai_etl plan --table schema.my_table --hint "提取情感倾向"
 python -m ai_etl plan --volume-type user --subdirectory "images/" --hint "识别产品类别"
+
+# 实时测试 prompt 效果（秒级返回，验证后再提交 batch）
+python -m ai_etl test --config config.yaml                  # 测试 1 条
+python -m ai_etl test --config config.yaml --count 3        # 测试 3 条
 
 # 运行 ETL
 python -m ai_etl run                                    # all enabled sources

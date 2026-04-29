@@ -272,6 +272,22 @@ for name in ['douyin', 'tmall', 'tmall_chaoshi', 'jd_self', 'jd_pop']:
   </table>
   </div>
   <div class="co s"><span>✅</span><span><strong>862/862 全部成功，0 失败。</strong>Batch API 的服务端重试机制确保了 100% 完成率。</span></div>
+
+  <h3>耗时与性能分析</h3>
+  <p>5 个 batch 并行提交后，DashScope 服务端并行处理，总等待时间约 <strong>40 分钟</strong>（取决于最慢的渠道）。</p>
+  <div class="tw">
+  <table>
+    <tr><th></th><th>Batch API（本案例）</th><th>实时 API（逐条调用）</th></tr>
+    <tr><td>862 条处理时间</td><td><strong>~40 分钟</strong>（并行，含排队）</td><td>~43 分钟（按 QPM=20 限流，862/20=43min）</td></tr>
+    <tr><td>8,000 条预估</td><td><strong>~60 分钟</strong>（服务端批量调度）</td><td>~6.7 小时（8000/20=400min）</td></tr>
+    <tr><td>50,000 条预估</td><td><strong>~2-4 小时</strong>（单文件上限）</td><td>~42 小时（50000/20=2500min）</td></tr>
+    <tr><td>成本</td><td><strong>50% 折扣</strong></td><td>标准价</td></tr>
+    <tr><td>并发管理</td><td>服务端自动</td><td>自行管理 QPM/TPM 限流</td></tr>
+    <tr><td>失败处理</td><td>服务端重试 + error 文件</td><td>自行实现重试逻辑</td></tr>
+    <tr><td>中断恢复</td><td>batch_id 恢复，零丢失</td><td>需自建 checkpoint</td></tr>
+  </table>
+  </div>
+  <div class="co i"><span>📊</span><span><strong>规模越大，Batch 优势越明显。</strong>862 条时两者耗时接近（Batch 有排队开销），但 8,000 条时 Batch 快 6 倍，50,000 条时快 10+ 倍。且 Batch 全程无需人工干预，实时 API 需要持续运行客户端进程并处理限流。</span></div>
 </div>
 </section>
 

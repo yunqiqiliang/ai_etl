@@ -18,8 +18,13 @@
 - [x] 空数据防御（空表/空文件/空结果）
 - [x] 端到端验证通过（双数据源并行，13/13 成功）
 - [x] README 完整文档
-- [x] 解决方案文档（docs/solution.html）
+- [x] 解决方案文档（docs/multimodal-ai-etl-solution.html）
 - [x] 61 个单元测试
+- [x] AI Plan 命令（采样分析 → 推荐配置）
+- [x] AI Test 命令（实时 API 验证 prompt 效果）
+- [x] Cat Litter Case Study（5 渠道 862 条竞品主数据生成）
+- [x] 数据质量修复（VOID 类型、件单价异常、转化率异常、天猫销量固定值）
+- [x] 跨渠道竞品分析（channel_summary 表 + 运营分析脚本）
 
 ## 待优化
 
